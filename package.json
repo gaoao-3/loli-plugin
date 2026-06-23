@@ -1,0 +1,10 @@
+{
+  "name": "loli-plugin",
+  "version": "0.1.0",
+  "description": "日奈的 QQ 机器人插件 — 基于 lolicon-core 引擎",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "lolicon-core": "file:///C:/Users/30942/WorkBuddy/Claw/lolicon-core"
+  }
+}
