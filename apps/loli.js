@@ -13,6 +13,17 @@ import { randomUUID } from 'crypto'
 
 // segment 由 TRSS-Yunzai 注入为全局变量
 
+// ─── 运行时状态 ────────────────────────────────
+
+/** 会话缓存: uid → { convId, lastTs, burstCount } */
+const sessionCache = new Map()
+
+/** 冷却追踪: user → lastReplyTs / group → lastReplyTs */
+const cooldowns = {
+  user: new Map(),
+  group: new Map()
+}
+
 // ─── 辅助函数 ──────────────────────────────────
 
 async function pickRandomChatter (e) {
@@ -96,6 +107,20 @@ function _checkManualAt (e) {
   })
 }
 
+/**
+ * 检查群聊最后一条消息是否自己发的（防自问自答）
+ */
+async function _isLastMessageFromSelf (e, selfId) {
+  if (!e.isGroup) return false
+  try {
+    const last = await getGroupHistory(e, 1)
+    if (last.length > 0) {
+      return String(last[0].sender?.user_id || '') === selfId
+    }
+  } catch {}
+  return false
+}
+
 // ─── 主类 ───────────────────────────────────────
 
 export class loli extends plugin {
@@ -147,7 +172,6 @@ export class loli extends plugin {
     const engine = getEngine()
     if (!engine) return false
 
-    // 跳过机器人自己
     const selfId = String(e.self_id || e.bot?.uin || '')
     if (selfId && String(e.user_id || e.sender?.user_id || '') === selfId) return false
 
@@ -156,8 +180,48 @@ export class loli extends plugin {
 
     const cfg = getConfig().loli
     const chaiteConfig = getConfig().chaite
+    const uid = String(e.user_id || e.sender?.user_id || '0')
+    const gid = e.isGroup ? String(e.group_id) : null
+    const now = Date.now()
 
-    // 选择预设
+    // ── 自问自答保护 ────────────────────────────
+    if (await _isLastMessageFromSelf(e, selfId)) return false
+
+    // ── 冷却检查 ────────────────────────────────
+    const cdUser = cfg.cooldownUser ?? 3000
+    const cdGroup = cfg.cooldownGroup ?? 1000
+    const lastUserReply = cooldowns.user.get(uid) || 0
+    if (now - lastUserReply < cdUser) return false
+    if (gid) {
+      const lastGroupReply = cooldowns.group.get(gid) || 0
+      if (now - lastGroupReply < cdGroup) return false
+    }
+    // 标记冷却时间（提前设置，防止本函数异步执行期间重复触发）
+    cooldowns.user.set(uid, now)
+    if (gid) cooldowns.group.set(gid, now)
+
+    // ── 会话复用 ────────────────────────────────
+    const sessionWindow = cfg.sessionWindow ?? 300000  // 默认 5 分钟
+    const maxBurst = cfg.maxReplyBurst ?? 0             // 0 = 不限制
+    let conversationId
+    let burstCount = 0
+
+    const cached = sessionCache.get(uid)
+    if (cached && (now - cached.lastTs) < sessionWindow) {
+      conversationId = cached.convId
+      burstCount = (cached.burstCount || 0) + 1
+      cached.lastTs = now
+      cached.burstCount = burstCount
+    } else {
+      conversationId = 'loli-' + uid + '-' + now
+      burstCount = 1
+      sessionCache.set(uid, { convId: conversationId, lastTs: now, burstCount: 1 })
+    }
+
+    // ── 优雅退出检查 ────────────────────────────
+    const isLastInBurst = maxBurst > 0 && burstCount >= maxBurst
+
+    // ── 选择预设 ────────────────────────────────
     let presetId = cfg.defaultPreset || 'hina'
     if (trigger.type === 'keyword' && cfg.presetMap?.length) {
       const option = cfg.presetMap
@@ -190,7 +254,7 @@ export class loli extends plugin {
       userMessage = {
         role: 'user',
         content: [{ type: 'text', text: '（基于以上群聊上下文，自然地说一句简短的话加入讨论，不要自我介绍，不要提"上下文"或"以上内容"）' }],
-        timestamp: Date.now()
+        timestamp: now
       }
     } else {
       userMessage = await intoUserMessage(e, {
@@ -216,7 +280,7 @@ export class loli extends plugin {
     const systemSegments = []
     const systemText = preset.systemPrompt?.content || chaiteConfig.presets?.find(p => p.id === presetId)?.systemPrompt?.content || ''
     if (systemText) {
-      systemSegments.push(systemText + '\n当前时间: ' + formatTimeToBeiJing(Date.now()))
+      systemSegments.push(systemText + '\n当前时间: ' + formatTimeToBeiJing(now))
     }
 
     // 记忆提示
@@ -224,7 +288,7 @@ export class loli extends plugin {
     const memoryPrompt = await buildMemoryPrompt({
       baseDir,
       groupId: e.isGroup ? String(e.group_id) : null,
-      userId: String(e.sender?.user_id || '')
+      userId: uid
     })
     if (memoryPrompt) systemSegments.push(memoryPrompt)
 
@@ -234,12 +298,14 @@ export class loli extends plugin {
       if (ctx) systemSegments.push(ctx)
     }
 
+    // 优雅退出：本轮最后一次回复，AI 自己生成收尾
+    if (isLastInBurst) {
+      systemSegments.push('[系统指令] 这是本轮对话的最后一次回复，自然地结束对话并道别，不要生硬地说"再见"或"拜拜"，继续保持你的性格和语气。')
+    }
+
     if (systemSegments.length > 0) {
       sendOpts.systemOverride = systemSegments.join('\n\n')
     }
-
-    // 会话 ID
-    const conversationId = 'loli-' + (e.user_id || e.sender?.user_id || '0') + '-' + Date.now()
 
     // 发送消息
     const result = await engine.sendMessage({
@@ -260,6 +326,15 @@ export class loli extends plugin {
         const recall = cfg.recallDefault || 0
         await e.reply(parts, false, { recallMsg: recall > 0 ? recall : 0 })
       }
+    }
+
+    // 优雅退出后：重置 burst 计数 + 加长冷却
+    if (isLastInBurst) {
+      const burstCooldown = cfg.burstCooldown ?? 180000  // 默认 3 分钟
+      cooldowns.user.set(uid, now + burstCooldown)
+      if (gid) cooldowns.group.set(gid, now + burstCooldown)
+      sessionCache.delete(uid)
+      logger.debug(`[loli] burst exhausted for ${uid}, cooling down ${burstCooldown}ms`)
     }
 
     // 记忆采集

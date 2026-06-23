@@ -67,7 +67,18 @@ export default {
     nicknameTracking: {
       enable: true,
       detectImpersonation: true
-    }
+    },
+    // ── 会话与冷却 ──────────────────────────
+    /** @type {number} 会话复用窗口 (毫秒)，同一用户在此时间内共享对话上下文 */
+    sessionWindow: 300000,
+    /** @type {number} 同一用户冷却 (毫秒) */
+    cooldownUser: 3000,
+    /** @type {number} 同一群聊冷却 (毫秒) */
+    cooldownGroup: 1000,
+    /** @type {number} 连续回复上限 (0=不限制)，达到后 AI 自行收尾并进入长冷却 */
+    maxReplyBurst: 0,
+    /** @type {number} 连发达上限后的冷却时间 (毫秒) */
+    burstCooldown: 180000,
   },
 
   /** @type {Object} 记忆系统 */
