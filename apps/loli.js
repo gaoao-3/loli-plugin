@@ -114,7 +114,7 @@ export class loli extends plugin {
   }
 
   _resolveTrigger (e) {
-    const cfg = getConfig()?.bym
+    const cfg = getConfig()?.loli
     if (!cfg?.enable) return { type: null }
 
     if (e.isPrivate && cfg.enableAtTrigger !== false) {
@@ -154,7 +154,7 @@ export class loli extends plugin {
     const trigger = this._resolveTrigger(e)
     if (!trigger.type) return false
 
-    const cfg = getConfig().bym
+    const cfg = getConfig().loli
     const chaiteConfig = getConfig().chaite
 
     // 选择预设

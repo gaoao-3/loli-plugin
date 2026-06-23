@@ -42,7 +42,7 @@ export default {
   },
 
   /** @type {Object} 伪人模式配置 */
-  bym: {
+  loli: {
     /** @type {boolean} 总开关 */
     enable: false,
     /** @type {string[]} 需要伪人响应的群组 */

@@ -12,7 +12,7 @@ export const help = {
   async showHelp (e) {
     const cfg = getConfig()
     const v = cfg?.version || '0.1.0'
-    const bym = cfg?.bym || {}
+    const loli = cfg?.loli || {}
 
     const lines = [
       `\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`,
@@ -22,9 +22,9 @@ export const help = {
       ``,
       `\uD83E\uDD16 伪人模式`,
       `  \u2022 @触发 — @机器人即可对话`,
-      `  \u2022 前缀触发 — ${bym.triggerPrefix?.join(', ') || '#ai'}`,
-      `  \u2022 关键词触发 — ${bym.triggerKeywords?.join(', ') || '(未设置)'}`,
-      `  \u2022 主动触发 — 概率 ${bym.promptProbability || 0}`,
+      `  \u2022 前缀触发 — ${loli.triggerPrefix?.join(', ') || '#ai'}`,
+      `  \u2022 关键词触发 — ${loli.triggerKeywords?.join(', ') || '(未设置)'}`,
+      `  \u2022 主动触发 — 概率 ${loli.promptProbability || 0}`,
       `  \u2022 [at:\u6635\u79F0] — AI \u53EF @\u7FA4\u53CB`,
       ``,
       `\uD83E\uDDE0 记忆系统`,
@@ -47,13 +47,13 @@ export const help = {
 
   async showStatus (e) {
     const cfg = getConfig()
-    const bym = cfg?.bym || {}
+    const loli = cfg?.loli || {}
     const memory = cfg?.memory || {}
 
     const lines = [
       `\u2728 日奈状态`,
       `版本: v${cfg?.version || '0.1.0'}`,
-      `伪人模式: ${bym.enable ? '\u2705 开启' : '\u274C 关闭'}`,
+      `伪人模式: ${loli.enable ? '\u2705 开启' : '\u274C 关闭'}`,
       `群组记忆: ${memory.group?.enable ? '\u2705 开启' : '\u274C 关闭'}`,
       `用户记忆: ${memory.user?.enable ? '\u2705 开启' : '\u274C 关闭'}`,
       `精炼周期: 每小时 \u00B7 画像: 每天`,
