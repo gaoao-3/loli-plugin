@@ -98,7 +98,7 @@ function _checkManualAt (e) {
 
 // ─── 主类 ───────────────────────────────────────
 
-export class bym extends plugin {
+export class loli extends plugin {
   constructor () {
     super({
       name: 'loli-伪人模式',
@@ -107,7 +107,7 @@ export class bym extends plugin {
       priority: 6000,
       rule: [{
         reg: '^(?:[^#]|$)',
-        fnc: 'bym',
+        fnc: 'loli',
         log: false
       }]
     })
@@ -143,7 +143,7 @@ export class bym extends plugin {
     return { type: null }
   }
 
-  async bym (e) {
+  async loli (e) {
     const engine = getEngine()
     if (!engine) return false
 
@@ -231,7 +231,7 @@ export class bym extends plugin {
     }
 
     // 会话 ID
-    const conversationId = 'bym-' + (e.user_id || e.sender?.user_id || '0') + '-' + Date.now()
+    const conversationId = 'loli-' + (e.user_id || e.sender?.user_id || '0') + '-' + Date.now()
 
     // 发送消息
     const result = await engine.sendMessage({
