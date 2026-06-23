@@ -50,15 +50,15 @@ export const rule = {}
 export async function init () {
   loadConfig()
 
-  // 创建引擎
+  // 创建引擎（工具目录直接指向源码，chokidar 监听实时生效）
   engine = new createEngine({
     dataDir: DATA_DIR,
-    toolsDir: path.join(DATA_DIR, 'tools'),
+    toolsDir: path.join(PLUGIN_ROOT, 'utils', 'tools'),
     logger: (msg) => logger.info(msg)
   })
   await engine.init()
 
-  // 自动注册渠道和预设到 LMDB
+  // 自动注册渠道和预设到存储
   const chaiteConfig = config.chaite || {}
   const channels = chaiteConfig.channels || []
   const presets = chaiteConfig.presets || []
@@ -69,23 +69,6 @@ export async function init () {
   for (const p of presets) {
     await engine.savePreset(p)
   }
-
-  // 复制默认工具到 data/tools/
-  const builtinToolsDir = path.join(PLUGIN_ROOT, 'utils', 'tools')
-  const runtimeToolsDir = path.join(DATA_DIR, 'tools')
-  if (fs.existsSync(builtinToolsDir)) {
-    const files = fs.readdirSync(builtinToolsDir).filter(f => f.endsWith('.js'))
-    for (const f of files) {
-      const src = path.join(builtinToolsDir, f)
-      const dst = path.join(runtimeToolsDir, f)
-      // 只复制缺失的文件
-      if (!fs.existsSync(dst)) {
-        fs.copyFileSync(src, dst)
-      }
-    }
-  }
-  // 重新扫描工具目录
-  await engine.toolLoader.init()
 
   // 启动记忆调度器
   try {
