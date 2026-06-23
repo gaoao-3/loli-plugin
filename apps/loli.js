@@ -185,18 +185,26 @@ export class loli extends plugin {
     }
 
     // 构建用户消息
-    const userMessage = await intoUserMessage(e, {
-      handleReplyText: true,
-      handleReplyImage: true,
-      useRawMessage: trigger.type !== 'prefix',
-      handleAtMsg: true,
-      excludeAtBot: false
-    })
-
-    if (trigger.type === 'prefix' && rawMsg) {
-      const tc = userMessage.content?.find(c => c.type === 'text')
-      if (tc) tc.text = rawMsg
-      else if (rawMsg) userMessage.content.push({ type: 'text', text: rawMsg })
+    let userMessage
+    if (trigger.type === 'proactive') {
+      userMessage = {
+        role: 'user',
+        content: [{ type: 'text', text: '（基于以上群聊上下文，自然地说一句简短的话加入讨论，不要自我介绍，不要提"上下文"或"以上内容"）' }],
+        timestamp: Date.now()
+      }
+    } else {
+      userMessage = await intoUserMessage(e, {
+        handleReplyText: true,
+        handleReplyImage: true,
+        useRawMessage: trigger.type !== 'prefix',
+        handleAtMsg: true,
+        excludeAtBot: false
+      })
+      if (trigger.type === 'prefix' && rawMsg) {
+        const tc = userMessage.content?.find(c => c.type === 'text')
+        if (tc) tc.text = rawMsg
+        else if (rawMsg) userMessage.content.push({ type: 'text', text: rawMsg })
+      }
     }
 
     const userText = extractTextFromUserMessage(userMessage) || e.msg || ''
