@@ -1,33 +1,21 @@
 <div align="center">
 
-```
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║   ██╗      ██████╗  ██╗     ██╗    ██████╗ ██╗     ██╗  ║
-║   ██║      ██╔═══██╗██║     ██║    ██╔══██╗██║     ██║  ║
-║   ██║      ██║   ██║██║     ██║    ██████╔╝██║     ██║  ║
-║   ██║      ██║   ██║██║     ██║    ██╔═══╝ ██║     ██║  ║
-║   ███████╗ ╚█████╔╝ ███████╗██║    ██║     ███████╗██║  ║
-║   ╚══════╝  ╚═════╝  ╚══════╝╚═╝    ╚═╝     ╚══════╝╚═╝  ║
-║                                                          ║
-║           萝莉妈妈の loli-plugin  Ver.0.1.0            ║
-║                                                          ║
-╚══════════════════════════════════════════════════════════╝
-```
+# 🍼 萝莉妈妈の loli-plugin 🎀
 
 <h3>乖宝宝，让麻麻来照顾你的 Yunzai 叭～</h3>
+
 <p><strong>基于 lolicon-core 引擎 · 轻量 · 可爱 · 会帮你操心一切</strong></p>
 
 <p>
-  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&labelColor=E3F2FD&color=2196F3">
-  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=E3F2FD&color=64B5F6">
-  <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-90CAF9?style=for-the-badge&labelColor=E3F2FD&color=90CAF9">
-  <img src="https://img.shields.io/badge/💝-MIT%20License-BBDEFB?style=for-the-badge&labelColor=E3F2FD&color=BBDEFB">
+  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&labelColor=E3F2FD&color=1976D2">
+  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=E3F2FD&color=42A5F5">
+  <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-90CAF9?style=for-the-badge&labelColor=E3F2FD&color=64B5F6">
+  <img src="https://img.shields.io/badge/💝-MIT%20License-BBDEFB?style=for-the-badge&labelColor=E3F2FD&color=90CAF9">
 </p>
 
 <p>
-  <img src="https://img.shields.io/github/stars/gaoao-3/loli-plugin?style=social&color=2196F3">
-  <img src="https://img.shields.io/github/forks/gaoao-3/loli-plugin?style=social&color=2196F3">
+  <img src="https://img.shields.io/github/stars/gaoao-3/loli-plugin?style=social&color=1976D2">
+  <img src="https://img.shields.io/github/forks/gaoao-3/loli-plugin?style=social&color=1976D2">
 </p>
 
 > 💙 *「Sensei！这边的任务已经 100% 完成了哦，萝莉妈妈随时待命～」* 💙
@@ -307,7 +295,7 @@ http://localhost:3000
 ---
 
 <p align="center">
-  <strong>🌸 crafted with 🍼 by gaoao-3 🌸</strong>
+  <strong>crafted with 🍼 by gaoao-3</strong>
 </p>
 
 <p align="center">
@@ -317,11 +305,5 @@ http://localhost:3000
 <p align="center">
   <em>💕 抱抱老师，摸摸头 💕</em>
 </p>
-
-<pre style="color:#ff9aa2; font-family:monospace; line-height:1.2; font-size:12px; background:transparent; border:none; margin:0;">
-🌸　　　🌸　　　　　　🌸　　　　　🌸
-　　🌸　　　　　🌸　　　　　🌸　　　🌸
-🌸　　　　　　　🌸　　　　　🌸　　　　　🌸
-</pre>
 
 </div>
