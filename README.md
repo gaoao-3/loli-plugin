@@ -1,5 +1,7 @@
 <div align="center">
 
+✦ 🎀 · 💠 · 🍼 · 💠 · 🎀 ✦
+
 # 🍼 萝莉妈妈の loli-plugin 🎀
 
 <h3>乖宝宝，让麻麻来照顾你的 Yunzai 叭～</h3>
@@ -21,9 +23,11 @@
 > 💙 *「Sensei！这边的任务已经 100% 完成了哦，萝莉妈妈随时待命～」* 💙
 > <br>—— 基沃托斯 · 萝莉妈妈风纪委员会
 
+✦ 💠 · 🎀 · 🍼 · 🎀 · 💠 ✦
+
 </div>
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -44,7 +48,7 @@
 
 一句话：**更轻、更快、更会被抱抱～** (｡･ω･｡)ﾉ♡
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -111,7 +115,7 @@
 
 </div>
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -164,7 +168,7 @@ node app.js
 
 > 🌸 修改后重启 Yunzai 生效哦，宝宝不要着急～
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -182,7 +186,7 @@ node app.js
 
 > 💡 在群聊里直接 @ 机器人或按配置的触发方式也可以唤醒萝莉妈妈哦！
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -225,7 +229,7 @@ http://localhost:3000
 
 > 🌸 端口冲突的话，改 `dashboard.port` 就好啦，麻麻告诉过你的～
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -252,7 +256,7 @@ http://localhost:3000
 └── package.json        # 📦 依赖配置
 ```
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -266,7 +270,7 @@ http://localhost:3000
   <a href="https://github.com/ikechan8370/node-chaite">⚙️ node-chaite（原版）</a>
 </p>
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -282,7 +286,7 @@ http://localhost:3000
 - 新增结构化记忆图谱
 - 彻底移除 SQLite / triggers / processors 依赖
 
----
+· · ─────── ・✦・ ─────── · ·
 
 <div align="center">
 
@@ -292,7 +296,7 @@ http://localhost:3000
   <a href="LICENSE">MIT License</a>
 </p>
 
----
+✦ 🎀 · 💠 · 🍼 · 💠 · 🎀 ✦
 
 <p align="center">
   <strong>crafted with 🍼 by gaoao-3</strong>
