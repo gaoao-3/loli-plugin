@@ -163,10 +163,14 @@ export function mergeHistoryImagesIntoUserMessage (userMessage, historyImages) {
 
   newContent.push({
     type: 'text',
-    text: `[群聊上下文] 最近 ${historyImages.length} 张来自 ${senderList} 等成员发送的图片如下，供你参考：`
+    text: `[群聊上下文] 最近 ${historyImages.length} 张来自 ${senderList} 等成员发送的图片如下，每张图片前标注了发送者，请结合当前对话理解。`
   })
 
   for (const img of historyImages) {
+    newContent.push({
+      type: 'text',
+      text: `【${img.senderName} 发送的图片】`
+    })
     newContent.push({
       type: 'image',
       image: img.image,
