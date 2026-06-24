@@ -1,8 +1,25 @@
-import { Chaite } from '@hina114514/chaite'
 import common from '../../../lib/common/common.js'
 import fetch from 'node-fetch'
 import { Jimp } from 'jimp'
+import { getEngine } from './state.js'
 import { getGroupHistory } from './group.js'
+
+/**
+ * 从统一用户消息中提取纯文本内容
+ * @param {import('chaite').UserMessage} userMessage
+ * @returns {string}
+ */
+export function extractTextFromUserMessage (userMessage) {
+  if (!userMessage?.content) return ''
+  if (typeof userMessage.content === 'string') return userMessage.content
+  if (Array.isArray(userMessage.content)) {
+    return userMessage.content
+      .filter(c => c.type === 'text')
+      .map(c => c.text)
+      .join('\n')
+  }
+  return ''
+}
 
 /**
  * 将图片 Buffer 压缩到合理大小，用于多模态输入
@@ -350,28 +367,25 @@ export async function intoUserMessage (e, options = {}) {
  */
 export async function getPreset (e, presetId, toggleMode, togglePrefix) {
   const isValidChat = checkChatMsg(e, toggleMode, togglePrefix)
-  const manager = Chaite.getInstance().getChatPresetManager()
-  const presets = await manager.getAllPresets()
+  const engine = getEngine()
+  if (!engine) return null
+  const presets = await engine.listPresets() || []
   const prefixHitPresets = presets.filter(p => e.msg?.startsWith(p.prefix))
   if (!isValidChat && prefixHitPresets.length === 0) {
     return null
   }
   let preset
-  // 如果不是at且不满足通用前缀，查看是否满足其他预设
   if (!isValidChat) {
-    // 找到其中prefix最长的
     if (prefixHitPresets.length > 1) {
-      preset = prefixHitPresets.sort((a, b) => b.prefix.length - a.prefix.length)[0]
+      preset = prefixHitPresets.sort((a, b) => (b.prefix?.length || 0) - (a.prefix?.length || 0))[0]
     } else {
       preset = prefixHitPresets[0]
     }
   } else {
-    // 命中at或通用前缀，直接走用户默认预设
-    preset = await manager.getInstance(presetId)
+    preset = await engine.getPreset(presetId)
   }
-  // 如果没找到再查一次
   if (!preset) {
-    preset = await manager.getInstance(presetId)
+    preset = await engine.getPreset(presetId)
   }
   return preset
 }

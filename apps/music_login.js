@@ -6,7 +6,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { getConfig, saveConfig, DATA_DIR } from '../index.js'
+import { getConfig, saveConfig, DATA_DIR } from '../utils/state.js'
 
 const PLUGIN_ROOT = path.resolve('./plugins/loli-plugin')
 

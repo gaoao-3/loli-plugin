@@ -2,7 +2,7 @@
  * 伪人模式 — 日奈的核心对话逻辑
  * 适配 lolicon-core 引擎
  */
-import { getEngine, getConfig, PLUGIN_ROOT, DATA_DIR } from '../index.js'
+import { getEngine, getConfig, DATA_DIR, initPlugin, destroyPlugin } from '../utils/state.js'
 import { intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
 import common from '../../../lib/common/common.js'
 import { getGroupContextPrompt, getGroupHistory } from '../utils/group.js'
@@ -360,5 +360,15 @@ export class loli extends plugin {
         assistantText: responseText
       })
     }
+  }
+
+  /** 插件初始化：启动引擎与管理面板 */
+  async init () {
+    await initPlugin()
+  }
+
+  /** 插件卸载 */
+  async destroy () {
+    await destroyPlugin()
   }
 }

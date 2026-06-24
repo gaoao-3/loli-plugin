@@ -3,33 +3,41 @@
  */
 import { execSync } from 'node:child_process'
 
-export const update = {
-  rule: [
-    { reg: '^#loli更新$', fnc: 'doUpdate' },
-    { reg: '^#loli强制更新$', fnc: 'doForceUpdate' }
-  ],
+export class loliUpdate extends plugin {
+  constructor () {
+    super({
+      name: 'loli-更新',
+      dsc: 'loli更新指令',
+      event: 'message',
+      priority: 600,
+      rule: [
+        { reg: '^#loli更新$', fnc: 'doUpdate' },
+        { reg: '^#loli强制更新$', fnc: 'doForceUpdate' }
+      ]
+    })
+  }
 
   async doUpdate (e) {
-    await e.reply('\uD83D\uDD04 正在更新 loli-plugin...')
+    await e.reply('🔄 正在更新 loli-plugin...')
     try {
       const out = await _exec('git -c user.name=loli -c user.email=loli@bot -C ./plugins/loli-plugin/ pull --no-rebase')
-      await e.reply(`\u2705 更新完成:\n${out.slice(-500)}`)
+      await e.reply(`✅ 更新完成:\n${out.slice(-500)}`)
     } catch (err) {
-      await e.reply(`\u274C 更新失败: ${err.message?.slice(0, 300)}`)
+      await e.reply(`❌ 更新失败: ${err.message?.slice(0, 300)}`)
     }
-  },
+  }
 
   async doForceUpdate (e) {
-    await e.reply('\uD83D\uDD04 正在强制更新 loli-plugin...')
+    await e.reply('🔄 正在强制更新 loli-plugin...')
     try {
       const out = await _exec(
         'git -c user.name=loli -c user.email=loli@bot -C ./plugins/loli-plugin/ checkout . && ' +
         'git -c user.name=loli -c user.email=loli@bot -C ./plugins/loli-plugin/ clean -fd && ' +
         'git -c user.name=loli -c user.email=loli@bot -C ./plugins/loli-plugin/ pull --no-rebase'
       )
-      await e.reply(`\u2705 强制更新完成:\n${out.slice(-500)}`)
+      await e.reply(`✅ 强制更新完成:\n${out.slice(-500)}`)
     } catch (err) {
-      await e.reply(`\u274C 更新失败: ${err.message?.slice(0, 300)}`)
+      await e.reply(`❌ 更新失败: ${err.message?.slice(0, 300)}`)
     }
   }
 }

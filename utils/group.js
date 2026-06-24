@@ -1,5 +1,5 @@
 import { getBotFramework } from './bot.js'
-import { getConfig } from '../index.js'
+import { getConfig } from './state.js'
 import { formatTimeToBeiJing } from './common.js'
 
 export class GroupContextCollector {

@@ -1,7 +1,4 @@
 import * as crypto from 'node:crypto'
-import path from 'path'
-import ChatGPTConfig from '../config/config.js'
-import fs from 'fs'
 export function md5 (str) {
   return crypto.createHash('md5').update(str).digest('hex')
 }
@@ -65,11 +62,6 @@ function formatDate (date, format) {
  */
 function padZero (num) {
   return num < 10 ? '0' + num : num.toString()
-}
-
-export const dataDir = path.resolve('./plugins/chatgpt-plugin', ChatGPTConfig.chaite.dataDir)
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true })
 }
 
 export function generateId () {
