@@ -1,8 +1,8 @@
 <div align="center">
 
-![Banner](assets/banner.png)
+![Banner](https://raw.githubusercontent.com/gaoao-3/loli-plugin/main/assets/banner.png)
 
-![Sakura Falling](assets/sakura.gif)
+![Sakura Falling](https://raw.githubusercontent.com/gaoao-3/loli-plugin/main/assets/sakura.gif)
 
 # 🍼🌸 萝莉妈妈の loli-plugin 🌸🍼
 
