@@ -65,18 +65,18 @@ function loadConfig () {
 }
 
 /** 保存配置 */
-function saveConfig () {
+export const saveConfig = () => {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
 }
 
 /** 获取引擎实例 */
-export function getEngine () { return engine }
+export const getEngine = () => engine
 
 /** 获取配置 */
-export function getConfig () { return config }
+export const getConfig = () => config
 
 /** 获取管理面板服务器实例 */
-export function getDashboardServer () { return server }
+export const getDashboardServer = () => server
 
 /**
  * 插件入口 — TRSS-Yunzai 规范
@@ -162,4 +162,4 @@ export async function destroy () {
   pluginLogger?.info('[loli] 日奈已卸载')
 }
 
-export { PLUGIN_ROOT, DATA_DIR, TOOLS_DIR, saveConfig }
+export { PLUGIN_ROOT, DATA_DIR, TOOLS_DIR }
