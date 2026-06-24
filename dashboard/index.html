@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日奈控制台 - loli-plugin</title>
+  <link rel="stylesheet" href="/dashboard/css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">🥱</span>
+          <span class="logo-text">日奈控制台</span>
+        </div>
+        <button class="sidebar-close" id="sidebarClose">×</button>
+      </div>
+      <nav class="nav">
+        <a href="#overview" class="nav-item active" data-page="overview">
+          <span class="nav-icon">📊</span>
+          <span>总览</span>
+        </a>
+        <a href="#channels" class="nav-item" data-page="channels">
+          <span class="nav-icon">🤖</span>
+          <span>渠道</span>
+        </a>
+        <a href="#presets" class="nav-item" data-page="presets">
+          <span class="nav-icon">🎭</span>
+          <span>预设</span>
+        </a>
+        <a href="#tools" class="nav-item" data-page="tools">
+          <span class="nav-icon">🧰</span>
+          <span>工具</span>
+        </a>
+        <a href="#memory" class="nav-item" data-page="memory">
+          <span class="nav-icon">🧠</span>
+          <span>记忆</span>
+        </a>
+        <a href="#config" class="nav-item" data-page="config">
+          <span class="nav-icon">⚙️</span>
+          <span>配置</span>
+        </a>
+        <a href="#logs" class="nav-item" data-page="logs">
+          <span class="nav-icon">📜</span>
+          <span>日志</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="version">v<span id="version">0.1.0</span></div>
+        <div class="status" id="connectionStatus">
+          <span class="status-dot online"></span>
+          <span>已连接</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <button class="menu-toggle" id="menuToggle">☰</button>
+        <h1 class="page-title" id="pageTitle">总览</h1>
+        <div class="header-actions">
+          <button class="btn btn-ghost" id="refreshBtn" title="刷新数据">🔄</button>
+          <button class="btn btn-ghost" id="themeBtn" title="切换主题">🌙</button>
+        </div>
+      </header>
+
+      <div class="content" id="content">
+        <!-- Pages will be injected here -->
+      </div>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/dashboard/js/app.js"></script>
+</body>
+</html>

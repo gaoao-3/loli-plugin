@@ -5,6 +5,8 @@
   "type": "module",
   "main": "index.js",
   "dependencies": {
-    "lolicon-core": "file:///C:/Users/30942/WorkBuddy/Claw/lolicon-core"
+    "lolicon-core": "file:///C:/Users/30942/WorkBuddy/Claw/lolicon-core",
+    "express": "^4.18.0",
+    "express-fileupload": "^1.4.0"
   }
 }

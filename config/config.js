@@ -108,5 +108,17 @@ export default {
     retryCount: 3
   },
 
+  /** @type {Object} 管理面板 */
+  dashboard: {
+    /** @type {boolean} 是否启用 */
+    enable: true,
+    /** @type {number} 面板端口 */
+    port: 3000,
+    /** @type {string} 访问令牌（为空则不校验） */
+    authToken: '',
+    /** @type {string} 允许访问的主机 */
+    host: '0.0.0.0'
+  },
+
   version: '0.1.0'
 }
