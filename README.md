@@ -7,16 +7,16 @@
 　　　🌸　　　　　　　　　🌸　　　　　　　　🌸
 </pre>
 
-# 🌸✨ loli-plugin ✨🌸
+# 🍼🌸 萝莉妈妈の loli-plugin 🌸🍼
 
-<h3>日奈的 Yunzai 机器人插件</h3>
-<p><strong>基于 lolicon-core 引擎 · 轻量 · 可爱 · 强力</strong></p>
+<h3>乖宝宝，让麻麻来照顾你的 Yunzai 叭～</h3>
+<p><strong>基于 lolicon-core 引擎 · 轻量 · 可爱 · 会帮你操心一切</strong></p>
 
 <p>
-  <img src="https://img.shields.io/badge/🌸-Version%200.1.0-ff9aa2?style=for-the-badge&labelColor=ffccd5&color=ff9aa2">
+  <img src="https://img.shields.io/badge/🍼-Version%200.1.0-ff9aa2?style=for-the-badge&labelColor=ffccd5&color=ff9aa2">
   <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-ffb7b2?style=for-the-badge&labelColor=ffccd5&color=ffb7b2">
   <img src="https://img.shields.io/badge/💝-MIT%20License-ffdac1?style=for-the-badge&labelColor=ffccd5&color=ffdac1">
-  <img src="https://img.shields.io/badge/🔗-gaoao--3-e2f0cb?style=for-the-badge&labelColor=ffccd5&color=e2f0cb">
+  <img src="https://img.shields.io/badge/👶-gaoao--3-e2f0cb?style=for-the-badge&labelColor=ffccd5&color=e2f0cb">
 </p>
 
 <p>
@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/github/forks/gaoao-3/loli-plugin?style=social&color=ff9aa2">
 </p>
 
-> 🌸 *「好麻烦……但既然是老师的委托，日奈会好好完成的。」* 🌸
+> 🌸 *「笨蛋老师乖～不要乱跑，交给萝莉妈妈就好啦～」* 🌸
 
 <pre style="color:#ff9aa2; font-family:monospace; line-height:1.2; font-size:12px; background:transparent; border:none; margin:0;">
 　　　🌸　　　　　　　　　🌸　　　　　🌸
@@ -39,28 +39,28 @@
 
 <div align="center">
 
-## 🎀 这是甚么？🎀
+## 🎀 嗨呀，宝宝好呀～ 🎀
 
 </div>
 
 **loli-plugin** 是一只专为 [Yunzai-Bot](https://github.com/Le-niao/Yunzai-Bot) 设计的 AI 聊天插件 ✨
 
-它由歌赫娜的风纪委员长 **空崎日奈** 亲自坐镇（大雾），底层驱动是咱家自研的 [lolicon-core](https://github.com/gaoao-3/lolicon-core) AI 引擎。
+它由最会照顾人的 **萝莉妈妈** 亲自守护（蹭蹭），底层驱动是咱家自研的 [lolicon-core](https://github.com/gaoao-3/lolicon-core) AI 引擎。
 
-相比臃肿的前辈 chatgpt-plugin，loli-plugin **删繁就简**：
+相比那些笨重的前辈，loli-plugin 就像一个贴心的 babysitter：
 
-- 🗑️ 移除 SQLite / LowDB / triggers / processors
-- 📝 采用纯 Markdown + 结构化记忆图谱
-- 🛠️ 本地工具热加载，即传即用
-- 🖥️ 内置 Web 管理面板，随 Yunzai 启动自动运行
+- 🗑️ 丢掉 SQLite / LowDB / triggers / processors 这些包袱
+- 📝 用纯 Markdown + 结构化记忆图谱记住你的喜好
+- 🛠️ 本地工具热加载，即传即用，不用宝宝动手
+- 🖥️ 内置 Web 管理面板，随 Yunzai 启动自动运行，麻麻帮你开好门
 
-一句话：**更轻、更快、更可爱～** (｡･ω･｡)ﾉ♡
+一句话：**更轻、更快、更会被抱抱～** (｡･ω･｡)ﾉ♡
 
 ---
 
 <div align="center">
 
-## 🌟 核心能力 🌟
+## 🌟 萝莉妈妈会什么 🌟
 
 </div>
 
@@ -73,7 +73,7 @@
 ### 🤖 AI 对话
 
 支持 Gemini / OpenAI 多渠道接入
-<br>工具调用循环，智能决策
+<br>工具调用循环，聪明又懂事
 
 </td>
 <td align="center" width="33%">
@@ -127,7 +127,7 @@
 
 <div align="center">
 
-## 🚀 快速上车 🚀
+## 🚀 宝宝跟我上车车 🚀
 
 </div>
 
@@ -137,7 +137,7 @@
 # 进入 Yunzai 插件目录
 cd /path/to/Yunzai-Bot/app/plugins
 
-# 克隆本项目
+# 把萝莉妈妈抱回家
 git clone https://github.com/gaoao-3/loli-plugin.git
 
 # 安装依赖
@@ -165,7 +165,7 @@ node app.js
         "adapterType": "gemini",
         "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
         "options": {
-          "apiKey": "把你的 API Key 放在这里啦！"
+          "apiKey": "把你的 API Key 放在这里啦，宝宝！"
         },
         "status": "enabled"
       }
@@ -174,7 +174,7 @@ node app.js
 }
 ```
 
-> 🌸 修改后重启 Yunzai 生效哦～
+> 🌸 修改后重启 Yunzai 生效哦，宝宝不要着急～
 
 ---
 
@@ -192,7 +192,7 @@ node app.js
 | `#loli更新` | 从 GitHub 拉取更新 |
 | `#loli强制更新` | 强制更新插件 |
 
-> 💡 在群聊里直接 @ 机器人或按配置的触发方式也可以唤醒日奈哦！
+> 💡 在群聊里直接 @ 机器人或按配置的触发方式也可以唤醒萝莉妈妈哦！
 
 ---
 
@@ -208,7 +208,7 @@ node app.js
 http://localhost:3000
 ```
 
-✨ 面板会自动启动，不需要单独跑服务！✨
+✨ 面板会自动启动，不需要宝宝单独跑服务！✨
 
 ### 面板能做什么？
 
@@ -235,13 +235,13 @@ http://localhost:3000
 }
 ```
 
-> 🌸 端口冲突的话，改 `dashboard.port` 就好啦～
+> 🌸 端口冲突的话，改 `dashboard.port` 就好啦，麻麻告诉过你的～
 
 ---
 
 <div align="center">
 
-## 🏗️ 项目结构 🏗️
+## 🏠 萝莉妈妈的家 🏠
 
 </div>
 
@@ -268,7 +268,7 @@ http://localhost:3000
 
 <div align="center">
 
-## 🔗 相关链接 🔗
+## 🔗 好朋友的链接 🔗
 
 </div>
 
@@ -282,11 +282,11 @@ http://localhost:3000
 
 <div align="center">
 
-## 📝 更新日志 📝
+## 📝 成长日记 📝
 
 </div>
 
-### 🌸 v0.1.0
+### 🍼 v0.1.0
 
 - 基于 lolicon-core 重构插件
 - 新增内置 Web 管理面板
@@ -307,11 +307,15 @@ http://localhost:3000
 ---
 
 <p align="center">
-  <strong>🌸 crafted with 💖 by gaoao-3 🌸</strong>
+  <strong>🌸 crafted with 🍼 by gaoao-3 🌸</strong>
 </p>
 
 <p align="center">
-  <em>「老师的委托，日奈会认真完成的……虽然还是有点麻烦啦。」</em>
+  <em>「老师乖乖待着就好，萝莉妈妈会全部处理好的～」</em>
+</p>
+
+<p align="center">
+  <em>💕 抱抱老师，摸摸头 💕</em>
 </p>
 
 <pre style="color:#ff9aa2; font-family:monospace; line-height:1.2; font-size:12px; background:transparent; border:none; margin:0;">
