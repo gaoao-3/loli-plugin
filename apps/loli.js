@@ -262,7 +262,8 @@ export class loli extends plugin {
         handleReplyImage: true,
         useRawMessage: trigger.type !== 'prefix',
         handleAtMsg: true,
-        excludeAtBot: false
+        excludeAtBot: false,
+        imageCompress: cfg.imageCompress
       })
       if (trigger.type === 'prefix' && rawMsg) {
         const tc = userMessage.content?.find(c => c.type === 'text')

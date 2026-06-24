@@ -79,6 +79,17 @@ export default {
     maxReplyBurst: 0,
     /** @type {number} 连发达上限后的冷却时间 (毫秒) */
     burstCooldown: 180000,
+    /** @type {Object} 图片压缩配置（用于识图等多模态输入） */
+    imageCompress: {
+      /** @type {boolean} 是否启用图片压缩 */
+      enable: true,
+      /** @type {number} 图片长边最大像素（超过则等比缩放） */
+      maxLongEdge: 1536,
+      /** @type {number} JPEG 输出质量 1-100 */
+      quality: 85,
+      /** @type {number} 最大允许文件大小 (KB)，超过则尝试降低质量 */
+      maxFileSizeKB: 2048
+    }
   },
 
   /** @type {Object} 记忆系统 */

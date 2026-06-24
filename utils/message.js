@@ -1,6 +1,65 @@
 import { Chaite } from '@hina114514/chaite'
 import common from '../../../lib/common/common.js'
 import fetch from 'node-fetch'
+import { Jimp } from 'jimp'
+
+/**
+ * 将图片 Buffer 压缩到合理大小，用于多模态输入
+ *
+ * @param {Buffer} buffer 原始图片数据
+ * @param {string} mimeType 原始 MIME 类型
+ * @param {{
+ *   enable: boolean,
+ *   maxLongEdge: number,
+ *   quality: number,
+ *   maxFileSizeKB: number
+ * }} options 压缩选项
+ * @returns {Promise<{ buffer: Buffer, mimeType: string }>}
+ */
+async function compressImage (buffer, mimeType, options = {}) {
+  const {
+    enable = true,
+    maxLongEdge = 1536,
+    quality = 85,
+    maxFileSizeKB = 2048
+  } = options
+
+  if (!enable || !buffer || buffer.length === 0) {
+    return { buffer, mimeType }
+  }
+
+  try {
+    const image = await Jimp.read(buffer)
+    const { width, height } = image.bitmap
+
+    // 等比缩放，限制长边
+    if (width > maxLongEdge || height > maxLongEdge) {
+      image.scaleToFit({ w: maxLongEdge, h: maxLongEdge })
+    }
+
+    // 输出为 JPEG 并控制质量
+    let outputBuffer = await image.getBuffer('image/jpeg', { quality })
+    let outputMimeType = 'image/jpeg'
+
+    // 如果仍超过最大文件大小，逐步降低质量
+    const maxBytes = maxFileSizeKB * 1024
+    let currentQuality = quality
+    while (outputBuffer.length > maxBytes && currentQuality > 30) {
+      currentQuality -= 10
+      outputBuffer = await image.getBuffer('image/jpeg', { quality: currentQuality })
+    }
+
+    // 压缩后反而更大时，保留原图原格式（通常发生在简单色块 PNG 等场景）
+    if (outputBuffer.length >= buffer.length) {
+      return { buffer, mimeType }
+    }
+
+    return { buffer: outputBuffer, mimeType: outputMimeType }
+  } catch (err) {
+    logger.warn?.('[loli] 图片压缩失败，使用原图:', err.message)
+    return { buffer, mimeType }
+  }
+}
 
 /**
  * 将e中的消息转换为chaite的UserMessage
@@ -14,7 +73,8 @@ import fetch from 'node-fetch'
  *   handleAtMsg: boolean,
  *   excludeAtBot: boolean,
  *   toggleMode: 'at' | 'prefix',
- *   togglePrefix: string
+ *   togglePrefix: string,
+ *   imageCompress: { enable: boolean, maxLongEdge: number, quality: number, maxFileSizeKB: number }
  * }} options
  * @returns {Promise<import('chaite').UserMessage>}
  */
@@ -27,7 +87,8 @@ export async function intoUserMessage (e, options = {}) {
     handleAtMsg = true,
     excludeAtBot = false,
     toggleMode = 'at',
-    togglePrefix = null
+    togglePrefix = null,
+    imageCompress = { enable: true, maxLongEdge: 1536, quality: 85, maxFileSizeKB: 2048 }
   } = options
   const contents = []
   let text = ''
@@ -51,10 +112,12 @@ export async function intoUserMessage (e, options = {}) {
             clearTimeout(timeout)
             if (res.ok) {
               const mimeType = res.headers.get('content-type') || 'image/jpeg'
+              const rawBuffer = Buffer.from(await res.arrayBuffer())
+              const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
               contents.push({
                 type: 'image',
-                image: Buffer.from(await res.arrayBuffer()).toString('base64'),
-                mimeType
+                image: compressed.buffer.toString('base64'),
+                mimeType: compressed.mimeType
               })
             } else {
               logger.warn(`fetch reply image ${val.url} failed: HTTP ${res.status}`)
@@ -110,10 +173,12 @@ export async function intoUserMessage (e, options = {}) {
       clearTimeout(timeout)
       if (res.ok) {
         const mimeType = res.headers.get('content-type') || 'image/jpeg'
+        const rawBuffer = Buffer.from(await res.arrayBuffer())
+        const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
         contents.push({
           type: 'image',
-          image: Buffer.from(await res.arrayBuffer()).toString('base64'),
-          mimeType
+          image: compressed.buffer.toString('base64'),
+          mimeType: compressed.mimeType
         })
       } else {
         logger.warn(`fetch image ${element.url} failed: HTTP ${res.status}`)
