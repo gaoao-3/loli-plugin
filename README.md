@@ -1,11 +1,8 @@
 <div align="center">
 
-<pre style="color:#ff9aa2; font-family:monospace; line-height:1.2; font-size:12px; background:transparent; border:none; margin:0;">
-    🌸　　　　　　🌸　　　　　　　　　　　🌸
-　　　🌸　　　🌸　　　　　🌸　　　　　🌸
-🌸　　　　　　　　　🌸　　　　　🌸　　　　　🌸
-　　　🌸　　　　　　　　　🌸　　　　　　　　🌸
-</pre>
+![Banner](assets/banner.png)
+
+![Sakura Falling](assets/sakura.gif)
 
 # 🍼🌸 萝莉妈妈の loli-plugin 🌸🍼
 
@@ -13,10 +10,15 @@
 <p><strong>基于 lolicon-core 引擎 · 轻量 · 可爱 · 会帮你操心一切</strong></p>
 
 <p>
-  <img src="https://img.shields.io/badge/🍼-Version%200.1.0-ff9aa2?style=for-the-badge&labelColor=ffccd5&color=ff9aa2">
-  <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-ffb7b2?style=for-the-badge&labelColor=ffccd5&color=ffb7b2">
-  <img src="https://img.shields.io/badge/💝-MIT%20License-ffdac1?style=for-the-badge&labelColor=ffccd5&color=ffdac1">
-  <img src="https://img.shields.io/badge/👶-gaoao--3-e2f0cb?style=for-the-badge&labelColor=ffccd5&color=e2f0cb">
+  <img src="https://img.shields.io/badge/🎀-Blue%20Archive%20style-2196F3?style=for-the-badge&labelColor=E3F2FD&color=2196F3">
+  <img src="https://img.shields.io/badge/🌸-Loli%20Mommy%20Power-ff9aa2?style=for-the-badge&labelColor=ffccd5&color=ff9aa2">
+</p>
+
+<p>
+  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&labelColor=ffccd5&color=ff9aa2">
+  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=ffccd5&color=ffb7b2">
+  <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-ffdac1?style=for-the-badge&labelColor=ffccd5&color=ffdac1">
+  <img src="https://img.shields.io/badge/💝-MIT%20License-e2f0cb?style=for-the-badge&labelColor=ffccd5&color=e2f0cb">
 </p>
 
 <p>
@@ -25,6 +27,9 @@
 </p>
 
 > 🌸 *「笨蛋老师乖～不要乱跑，交给萝莉妈妈就好啦～」* 🌸
+
+> 💙 *「Sensei！这边的任务已经 100% 完成了哦，萝莉妈妈随时待命～」* 💙
+> <br>—— 基沃托斯 · 萝莉妈妈风纪委员会
 
 <pre style="color:#ff9aa2; font-family:monospace; line-height:1.2; font-size:12px; background:transparent; border:none; margin:0;">
 　　　🌸　　　　　　　　　🌸　　　　　🌸
@@ -248,6 +253,7 @@ http://localhost:3000
 ```text
 🌸 loli-plugin/
 ├── 📁 apps/              # 群聊/私聊消息处理模块
+├── 📁 assets/            # 🎨 图片资源（banner / sakura gif）
 ├── 📁 config/            # 默认配置文件
 │   └── config.js
 ├── 📁 dashboard/         # 🖥️ Web 管理面板
