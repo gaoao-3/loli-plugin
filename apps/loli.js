@@ -3,7 +3,7 @@
  * 适配 lolicon-core 引擎
  */
 import { getEngine, getConfig, PLUGIN_ROOT, DATA_DIR } from '../index.js'
-import { intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText } from '../utils/message.js'
+import { intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
 import common from '../../../lib/common/common.js'
 import { getGroupContextPrompt, getGroupHistory } from '../utils/group.js'
 import { formatTimeToBeiJing } from '../utils/common.js'
@@ -269,6 +269,19 @@ export class loli extends plugin {
         const tc = userMessage.content?.find(c => c.type === 'text')
         if (tc) tc.text = rawMsg
         else if (rawMsg) userMessage.content.push({ type: 'text', text: rawMsg })
+      }
+
+      // 群聊历史多图识别：把最近其他成员发的图片也加入当前请求
+      if (e.isGroup && cfg.historyImages?.enable) {
+        const historyImages = await collectHistoryImages(e, {
+          maxImages: cfg.historyImages.maxImages,
+          maxAgeSeconds: cfg.historyImages.maxAgeSeconds,
+          contextLength: cfg.contextLength,
+          imageCompress: cfg.imageCompress
+        })
+        if (historyImages.length > 0) {
+          userMessage = mergeHistoryImagesIntoUserMessage(userMessage, historyImages)
+        }
       }
     }
 

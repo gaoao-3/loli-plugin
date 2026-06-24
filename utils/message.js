@@ -2,6 +2,7 @@ import { Chaite } from '@hina114514/chaite'
 import common from '../../../lib/common/common.js'
 import fetch from 'node-fetch'
 import { Jimp } from 'jimp'
+import { getGroupHistory } from './group.js'
 
 /**
  * 将图片 Buffer 压缩到合理大小，用于多模态输入
@@ -58,6 +59,128 @@ async function compressImage (buffer, mimeType, options = {}) {
   } catch (err) {
     logger.warn?.('[loli] 图片压缩失败，使用原图:', err.message)
     return { buffer, mimeType }
+  }
+}
+
+/**
+ * 从群聊历史消息中收集最近 N 张图片，供 AI 识别群聊上下文中的多图
+ *
+ * @param e
+ * @param {{
+ *   maxImages: number,
+ *   maxAgeSeconds: number,
+ *   contextLength: number,
+ *   imageCompress: { enable: boolean, maxLongEdge: number, quality: number, maxFileSizeKB: number }
+ * }} options
+ * @returns {Promise<Array<{ type: string, image: string, mimeType: string, senderName: string, senderId: string, time: number }>>}
+ */
+export async function collectHistoryImages (e, options = {}) {
+  const {
+    maxImages = 5,
+    maxAgeSeconds = 300,
+    contextLength = 30,
+    imageCompress = { enable: true, maxLongEdge: 1536, quality: 85, maxFileSizeKB: 2048 }
+  } = options
+
+  if (!e.isGroup || maxImages <= 0) return []
+
+  try {
+    const chats = await getGroupHistory(e, contextLength)
+    const selfId = String(e.self_id || e.bot?.uin || '')
+    const images = []
+    const nowSec = Math.floor(Date.now() / 1000)
+
+    // 从后往前遍历，优先取最近的消息
+    for (let i = chats.length - 1; i >= 0; i--) {
+      if (images.length >= maxImages) break
+
+      const chat = chats[i]
+      if (!chat) continue
+
+      const senderId = String(chat.sender?.user_id || '')
+      if (!senderId || senderId === selfId || senderId === '0') continue
+
+      const chatTime = chat.time || 0
+      if (nowSec - chatTime > maxAgeSeconds) continue
+
+      for (const seg of chat.message || []) {
+        if (images.length >= maxImages) break
+        if (seg.type !== 'image' || !seg.url) continue
+
+        try {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 15000)
+          const res = await fetch(seg.url, { signal: controller.signal })
+          clearTimeout(timeout)
+
+          if (!res.ok) {
+            logger.warn(`[loli] fetch history image failed: HTTP ${res.status}`)
+            continue
+          }
+
+          const mimeType = res.headers.get('content-type') || 'image/jpeg'
+          const rawBuffer = Buffer.from(await res.arrayBuffer())
+          const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
+
+          images.push({
+            type: 'image',
+            image: compressed.buffer.toString('base64'),
+            mimeType: compressed.mimeType,
+            senderName: chat.sender?.card || chat.sender?.nickname || senderId,
+            senderId,
+            time: chatTime
+          })
+        } catch (err) {
+          logger.warn(`[loli] fetch history image failed: ${err.message}`)
+        }
+      }
+    }
+
+    // 按时间顺序返回
+    return images.reverse()
+  } catch (err) {
+    logger.warn(`[loli] collect history images failed: ${err.message}`)
+    return []
+  }
+}
+
+/**
+ * 将历史图片合并到当前用户消息中，让 AI 能看到群内其他成员发的图
+ *
+ * @param {import('chaite').UserMessage} userMessage
+ * @param {Array} historyImages
+ * @returns {import('chaite').UserMessage}
+ */
+export function mergeHistoryImagesIntoUserMessage (userMessage, historyImages) {
+  if (!historyImages || historyImages.length === 0) return userMessage
+
+  const currentImages = userMessage.content?.filter(c => c.type === 'image') || []
+  const currentText = userMessage.content?.filter(c => c.type === 'text') || []
+  const otherContents = userMessage.content?.filter(c => c.type !== 'image' && c.type !== 'text') || []
+
+  const senderList = [...new Set(historyImages.map(img => img.senderName))].join('、')
+  const newContent = []
+
+  newContent.push({
+    type: 'text',
+    text: `[群聊上下文] 最近 ${historyImages.length} 张来自 ${senderList} 等成员发送的图片如下，供你参考：`
+  })
+
+  for (const img of historyImages) {
+    newContent.push({
+      type: 'image',
+      image: img.image,
+      mimeType: img.mimeType
+    })
+  }
+
+  newContent.push(...currentText)
+  newContent.push(...currentImages)
+  newContent.push(...otherContents)
+
+  return {
+    ...userMessage,
+    content: newContent
   }
 }
 

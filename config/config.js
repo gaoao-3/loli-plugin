@@ -89,6 +89,17 @@ export default {
       quality: 85,
       /** @type {number} 最大允许文件大小 (KB)，超过则尝试降低质量 */
       maxFileSizeKB: 2048
+    },
+    /** @type {Object} 群聊历史图片识别配置 */
+    historyImages: {
+      /** @type {boolean} 是否启用 */
+      enable: true,
+      /** @type {number} 最多收集最近几张历史图片 */
+      maxImages: 5,
+      /** @type {number} 只收集多少秒内的图片 */
+      maxAgeSeconds: 300,
+      /** @type {number} 检查历史图片时读取的上下文条数 */
+      contextLength: 30
     }
   },
 
