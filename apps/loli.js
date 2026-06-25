@@ -342,6 +342,23 @@ export class loli extends plugin {
       }
     }
 
+    // 发送思考过程（仅在配置启用时）
+    if (cfg.sendReasoning && result.response) {
+      const reasoningText = (result.response.content || [])
+        .filter(c => c.type === 'reasoning' && c.text)
+        .map(c => c.text)
+        .join('\n')
+        .trim()
+      if (reasoningText) {
+        try {
+          const fwd = await common.makeForwardMsg(e, [reasoningText], '思考过程')
+          await e.reply(fwd)
+        } catch (err) {
+          logger.warn(`[loli] 发送思考过程失败: ${err.message}`)
+        }
+      }
+    }
+
     // 优雅退出后：重置 burst 计数 + 加长冷却
     if (isLastInBurst) {
       const burstCooldown = cfg.burstCooldown ?? 180000  // 默认 3 分钟
