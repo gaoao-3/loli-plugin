@@ -27,7 +27,7 @@ export default {
           temperature: 0.9,
           maxTokens: 2048,
           enableReasoning: true,
-          reasoningEffort: 'low'
+          reasoningEffort: 'low'  // off / low / medium / high
         },
         systemPrompt: {
           content: `你是空崎日奈（そらさき ひな / Sorasaki Hina），歌赫娜学院的风纪委员长。
