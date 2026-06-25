@@ -17,6 +17,36 @@ const state = {
   theme: 'dark'
 }
 
+const THINKING_LEVEL_OPTIONS = ['OFF', 'LOW', 'MEDIUM', 'HIGH']
+
+function normalizeThinkingLevel (value, enableReasoning = true) {
+  if (value == null || value === '') {
+    return enableReasoning ? 'LOW' : 'OFF'
+  }
+
+  const normalized = String(value).toUpperCase()
+  switch (normalized) {
+    case 'OFF':
+    case 'MINIMAL':
+      return 'OFF'
+    case 'LOW':
+    case 'MEDIUM':
+    case 'HIGH':
+      return normalized
+    default:
+      return enableReasoning ? 'LOW' : 'OFF'
+  }
+}
+
+function getThinkingLevelOptionsMarkup (selectedLevel) {
+  return THINKING_LEVEL_OPTIONS.map(level => `<option value="${level}" ${selectedLevel === level ? 'selected' : ''}>${level}</option>`).join('')
+}
+
+function parseNumberInput (value, fallback) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
 const pages = {
   overview: { title: '总览', render: renderOverview },
   channels: { title: '渠道管理', render: renderChannels },
@@ -255,6 +285,7 @@ async function renderPresets (container) {
               </div>
               <div class="card-subtitle mb-4">渠道: ${escapeHtml(p.channelId)}</div>
               <div class="card-subtitle mb-4">模型: ${escapeHtml(p.sendMessageOption?.model || '-')}</div>
+              <div class="card-subtitle mb-4">思考: ${p.sendMessageOption?.enableReasoning === false ? '关闭' : normalizeThinkingLevel(p.sendMessageOption?.thinkingLevel ?? p.sendMessageOption?.reasoningEffort, true)}</div>
               <div class="flex gap-2">
                 <button class="btn btn-sm btn-secondary" onclick="showPresetModal('${p.id}')">编辑</button>
                 <button class="btn btn-sm ${p.status === 'enabled' ? 'btn-danger' : 'btn-success'}" onclick="togglePreset('${p.id}')">${p.status === 'enabled' ? '禁用' : '启用'}</button>
@@ -352,13 +383,18 @@ async function renderConfig (container) {
     setLoading(true)
     const config = await get('/config')
 
+    const imageCompress = config.loli?.imageCompress || {}
+    const historyImages = config.loli?.historyImages || {}
+
     container.innerHTML = `
       <div class="page">
         <div class="section-header">
           <h2 class="section-title">系统配置</h2>
           <button class="btn btn-sm" onclick="saveConfig()">💾 保存</button>
         </div>
+
         <div class="card">
+          <div class="card-header"><h3>基础设置</h3></div>
           <div class="form-group">
             <label class="form-label">伪人模式总开关</label>
             <select class="form-select" id="cfg-loli-enable">
@@ -381,6 +417,75 @@ async function renderConfig (container) {
           <div class="form-group">
             <label class="form-label">主动回复概率</label>
             <input class="form-input" type="number" step="0.1" min="0" max="1" id="cfg-loli-promptProbability" value="${config.loli?.promptProbability || 0}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">发送思考内容</label>
+            <select class="form-select" id="cfg-loli-sendReasoning">
+              <option value="true" ${config.loli?.sendReasoning ? 'selected' : ''}>启用</option>
+              <option value="false" ${!config.loli?.sendReasoning ? 'selected' : ''}>禁用</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">会话复用窗口 (ms)</label>
+            <input class="form-input" type="number" id="cfg-loli-sessionWindow" value="${config.loli?.sessionWindow || 300000}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">连续回复上限 (0=不限)</label>
+            <input class="form-input" type="number" id="cfg-loli-maxReplyBurst" value="${config.loli?.maxReplyBurst || 0}">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>图片压缩</h3></div>
+          <div class="form-group">
+            <label class="form-label">启用图片压缩</label>
+            <select class="form-select" id="cfg-img-enable">
+              <option value="true" ${imageCompress.enable !== false ? 'selected' : ''}>启用</option>
+              <option value="false" ${imageCompress.enable === false ? 'selected' : ''}>禁用</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">长边最大像素</label>
+            <input class="form-input" type="number" id="cfg-img-maxLongEdge" value="${imageCompress.maxLongEdge || 1536}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">JPEG 质量 (1-100)</label>
+            <input class="form-input" type="number" min="1" max="100" id="cfg-img-quality" value="${imageCompress.quality || 85}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">最大文件大小 (KB)</label>
+            <input class="form-input" type="number" id="cfg-img-maxFileSizeKB" value="${imageCompress.maxFileSizeKB || 2048}">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>历史图片识别</h3></div>
+          <div class="form-group">
+            <label class="form-label">启用历史图片识别</label>
+            <select class="form-select" id="cfg-himg-enable">
+              <option value="true" ${historyImages.enable !== false ? 'selected' : ''}>启用</option>
+              <option value="false" ${historyImages.enable === false ? 'selected' : ''}>禁用</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">最多收集张数</label>
+            <input class="form-input" type="number" id="cfg-himg-maxImages" value="${historyImages.maxImages || 5}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">最大时效 (秒)</label>
+            <input class="form-input" type="number" id="cfg-himg-maxAgeSeconds" value="${historyImages.maxAgeSeconds || 300}">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3>管理面板</h3></div>
+          <div class="form-group">
+            <label class="form-label">面板端口</label>
+            <input class="form-input" type="number" id="cfg-dash-port" value="${config.dashboard?.port || 3000}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">访问令牌 (为空不校验)</label>
+            <input class="form-input" type="password" id="cfg-dash-authToken" value="${config.dashboard?.authToken || ''}">
           </div>
         </div>
       </div>
@@ -474,7 +579,25 @@ async function saveConfig () {
         contextLength: parseInt(document.getElementById('cfg-loli-contextLength').value),
         cooldownUser: parseInt(document.getElementById('cfg-loli-cooldownUser').value),
         cooldownGroup: parseInt(document.getElementById('cfg-loli-cooldownGroup').value),
-        promptProbability: parseFloat(document.getElementById('cfg-loli-promptProbability').value)
+        promptProbability: parseFloat(document.getElementById('cfg-loli-promptProbability').value),
+        sendReasoning: document.getElementById('cfg-loli-sendReasoning').value === 'true',
+        sessionWindow: parseInt(document.getElementById('cfg-loli-sessionWindow').value),
+        maxReplyBurst: parseInt(document.getElementById('cfg-loli-maxReplyBurst').value),
+        imageCompress: {
+          enable: document.getElementById('cfg-img-enable').value === 'true',
+          maxLongEdge: parseInt(document.getElementById('cfg-img-maxLongEdge').value),
+          quality: parseInt(document.getElementById('cfg-img-quality').value),
+          maxFileSizeKB: parseInt(document.getElementById('cfg-img-maxFileSizeKB').value)
+        },
+        historyImages: {
+          enable: document.getElementById('cfg-himg-enable').value === 'true',
+          maxImages: parseInt(document.getElementById('cfg-himg-maxImages').value),
+          maxAgeSeconds: parseInt(document.getElementById('cfg-himg-maxAgeSeconds').value)
+        }
+      },
+      dashboard: {
+        port: parseInt(document.getElementById('cfg-dash-port').value),
+        authToken: document.getElementById('cfg-dash-authToken').value
       }
     }
     await put('/config', config)
@@ -613,6 +736,27 @@ function showPresetModal (id) {
         <input class="form-input" type="number" step="0.1" id="ps-temperature" value="${p ? p.sendMessageOption?.temperature || 0.9 : 0.9}">
       </div>
       <div class="form-group">
+        <label class="form-label">Max Tokens</label>
+        <input class="form-input" type="number" min="1" id="ps-maxTokens" value="${p ? p.sendMessageOption?.maxTokens || 2048 : 2048}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">启用思考</label>
+        <select class="form-select" id="ps-enableReasoning">
+          <option value="true" ${p?.sendMessageOption?.enableReasoning !== false ? 'selected' : ''}>启用</option>
+          <option value="false" ${p?.sendMessageOption?.enableReasoning === false ? 'selected' : ''}>禁用</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">思考等级</label>
+        <select class="form-select" id="ps-thinkingLevel">
+          ${getThinkingLevelOptionsMarkup(normalizeThinkingLevel(p?.sendMessageOption?.thinkingLevel ?? p?.sendMessageOption?.reasoningEffort, p?.sendMessageOption?.enableReasoning !== false))}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Top P</label>
+        <input class="form-input" type="number" step="0.05" min="0" max="1" id="ps-topP" value="${p && p.sendMessageOption?.topP != null ? p.sendMessageOption.topP : ''}" placeholder="可选">
+      </div>
+      <div class="form-group">
         <label class="form-label">System Prompt</label>
         <textarea class="form-textarea" id="ps-systemPrompt">${p ? escapeHtml(p.systemPrompt?.content || '') : ''}</textarea>
       </div>
@@ -625,13 +769,21 @@ function showPresetModal (id) {
 }
 
 async function submitPreset (id) {
+  const enableReasoning = document.getElementById('ps-enableReasoning').value === 'true'
+  const thinkingLevel = normalizeThinkingLevel(document.getElementById('ps-thinkingLevel').value, enableReasoning)
+  const topPValue = document.getElementById('ps-topP').value.trim()
   const data = {
     id: id || document.getElementById('ps-id').value,
     name: document.getElementById('ps-name').value,
     channelId: document.getElementById('ps-channelId').value,
     sendMessageOption: {
       model: document.getElementById('ps-model').value,
-      temperature: parseFloat(document.getElementById('ps-temperature').value)
+      temperature: parseNumberInput(document.getElementById('ps-temperature').value, 0.9),
+      maxTokens: parseInt(document.getElementById('ps-maxTokens').value) || 2048,
+      enableReasoning,
+      thinkingLevel,
+      reasoningEffort: thinkingLevel.toLowerCase(),
+      ...(topPValue ? { topP: parseNumberInput(topPValue, 1) } : {})
     },
     systemPrompt: {
       content: document.getElementById('ps-systemPrompt').value
