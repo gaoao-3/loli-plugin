@@ -4,7 +4,7 @@
  * 获取真实播放链接 + 专辑封面，发送 custom music 段
  */
 import { createHash } from 'node:crypto'
-import { CustomTool, asyncLocalStorage } from 'lolicon-core'
+import { CustomTool } from 'lolicon-core'
 
 class SendMusic extends CustomTool {
 
@@ -25,12 +25,9 @@ class SendMusic extends CustomTool {
     }
   }
 
-  async run(args) {
+  async run (args, context) {
     const { id: mid } = args
-    const context = asyncLocalStorage.getStore()
-    if (!context) return '错误: 无法获取上下文'
-
-    const e = context.getEvent()
+    const e = context?.event
     if (!e) return '错误: 无法获取事件对象'
 
     try {
