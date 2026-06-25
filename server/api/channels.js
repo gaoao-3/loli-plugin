@@ -1,5 +1,13 @@
 import { Router } from 'express'
 
+/** 将引擎中的渠道列表同步到 config.chaite.channels 并落盘 */
+async function syncToConfig (ctx) {
+  const channels = await ctx.engine.listChannels()
+  if (!ctx.config.chaite) ctx.config.chaite = {}
+  ctx.config.chaite.channels = channels
+  ctx.saveConfig()
+}
+
 export default function channelRoutes (ctx) {
   const router = Router()
 
@@ -12,6 +20,7 @@ export default function channelRoutes (ctx) {
     const ch = req.body
     if (!ch.id || !ch.name) return res.status(400).json({ error: '缺少 id 或 name' })
     await ctx.engine.saveChannel(ch)
+    await syncToConfig(ctx)
     res.json({ ok: true, channel: ch })
   })
 
@@ -25,11 +34,13 @@ export default function channelRoutes (ctx) {
     const ch = req.body
     ch.id = req.params.id
     await ctx.engine.saveChannel(ch)
+    await syncToConfig(ctx)
     res.json({ ok: true, channel: ch })
   })
 
   router.delete('/:id', async (req, res) => {
     await ctx.engine.storage.deleteChannel(req.params.id)
+    await syncToConfig(ctx)
     res.json({ ok: true })
   })
 
