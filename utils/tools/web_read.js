@@ -4,7 +4,7 @@
  */
 import { CustomTool } from 'lolicon-core'
 import { Readability } from '@mozilla/readability'
-import { JSDOM } from 'jsdom'
+import { DOMParser } from 'linkedom'
 
 const TIMEOUT_MS = 20000
 const MAX_TEXT_LEN = 8000   // 返回正文上限，防 token 爆炸
@@ -73,8 +73,8 @@ class WebRead extends CustomTool {
       const html = await res.text()
 
       // 2. 提取正文
-      const dom = new JSDOM(html, { url })
-      const reader = new Readability(dom.window.document)
+      const { document } = new DOMParser().parseFromString(html, 'text/html')
+      const reader = new Readability(document)
       const article = reader.parse()
 
       if (!article) {
@@ -83,7 +83,7 @@ class WebRead extends CustomTool {
 
       // 3. 清理文本
       const title = (article.title || '').trim()
-      const textOnly = dom.window.document.createElement('div')
+      const textOnly = document.createElement('div')
       textOnly.innerHTML = article.content || ''
       let text = textOnly.textContent || ''
       // 压缩空白 + 合并多余空行
