@@ -53,7 +53,19 @@ function wrapLogger () {
 
 function loadConfig () {
   if (fs.existsSync(CONFIG_PATH)) {
-    config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+    try {
+      const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        config = parsed
+      } else {
+        throw new Error('parsed config is not an object')
+      }
+    } catch (err) {
+      console.warn(`[loli] 配置文件 ${CONFIG_PATH} 读取失败，使用默认配置: ${err.message}`)
+      config = JSON.parse(JSON.stringify(defaultConfig))
+      fs.mkdirSync(DATA_DIR, { recursive: true })
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
+    }
   } else {
     config = JSON.parse(JSON.stringify(defaultConfig))
     fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -63,6 +75,10 @@ function loadConfig () {
 }
 
 export const saveConfig = () => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    console.warn('[loli] saveConfig skipped: config is not loaded')
+    return
+  }
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
 }
 
