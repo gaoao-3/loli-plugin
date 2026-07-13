@@ -25,7 +25,7 @@ importers:
         version: 0.18.13
       lolicon-core:
         specifier: github:gaoao-3/lolicon-core
-        version: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/d263c429083c07895d7e81cf129cb9f5ff1e6bbe(ws@8.21.0)(zod@3.25.76)
+        version: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(ws@8.21.0)(zod@3.25.76)
 
 packages:
 
@@ -574,8 +574,8 @@ packages:
       canvas:
         optional: true
 
-  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/d263c429083c07895d7e81cf129cb9f5ff1e6bbe:
-    resolution: {tarball: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/d263c429083c07895d7e81cf129cb9f5ff1e6bbe}
+  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915:
+    resolution: {tarball: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915}
     version: 0.2.0
     engines: {node: '>=22'}
 
@@ -1609,7 +1609,7 @@ snapshots:
       htmlparser2: 10.1.0
       uhyphen: 0.2.0
 
-  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/d263c429083c07895d7e81cf129cb9f5ff1e6bbe(ws@8.21.0)(zod@3.25.76):
+  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(ws@8.21.0)(zod@3.25.76):
     dependencies:
       '@google/genai': 1.52.0
       chokidar: 4.0.3
