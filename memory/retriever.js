@@ -1,9 +1,8 @@
 /**
- * 记忆检索器 — 纯 .md 文件检索
- * 无 SQLite、无向量，纯文件系统 grep
+ * 记忆检索器 — 从 SQLite 读取摘要和画像
  */
-import fs from 'fs'
-import path from 'path'
+import { searchRelevantChunks } from './embedding.js'
+import { getProfile, getRecentSummaries, getSummary, today } from './store.js'
 
 /**
  * 检索相关记忆
@@ -11,44 +10,61 @@ import path from 'path'
  * @param {string} opts.baseDir - memory 根目录
  * @param {string} [opts.groupId]
  * @param {string} [opts.userId]
- * @param {string} [opts.queryText]
- * @returns {{ groupImpression?: string, userImpression?: string, todayGroup?: string, todayUser?: string }}
+ * @returns {Promise<{ groupImpression?: string, userImpression?: string, todayGroup?: string, todayUser?: string, relevant?: Array }>}
  */
-export function retrieveMemories ({ baseDir, groupId, userId, queryText = '' }) {
-  const refined = path.join(baseDir, 'refined')
+export async function retrieveMemories ({ baseDir, groupId, userId, queryText = '', config }) {
   const result = {}
+  const currentDate = today()
+  const memoryConfig = config?.memory || {}
+  const groupConfig = memoryConfig.group || {}
+  const userConfig = memoryConfig.user || {}
+  const enabledGroups = Array.isArray(groupConfig.enabledGroups) ? groupConfig.enabledGroups.map(String) : []
+  const groupEnabled = Boolean(groupId) && groupConfig.enable !== false &&
+    (enabledGroups.length === 0 || enabledGroups.includes(String(groupId)))
+  const userEnabled = Boolean(userId) && userConfig.enable !== false
 
-  if (groupId) {
-    // 群画像
-    const imp = path.join(refined, 'groups', groupId, 'impressions.md')
-    if (fs.existsSync(imp)) {
-      result.groupImpression = fs.readFileSync(imp, 'utf8').replace(/\[hash:.*?\]/, '').trim()
-    }
-    // 今日精炼
-    const today = path.join(refined, 'groups', groupId, getToday() + '.md')
-    if (fs.existsSync(today)) {
-      result.todayGroup = fs.readFileSync(today, 'utf8').replace(/\[hash:.*?\]/, '').trim()
+  if (groupEnabled) {
+    const profile = getProfile(baseDir, 'group', groupId)
+    if (profile?.profile) result.groupImpression = profile.profile
+
+    const summary = getSummary(baseDir, 'group', groupId, currentDate)
+    if (summary?.summary) {
+      result.todayGroup = summary.summary
+    } else {
+      const recent = getRecentSummaries(baseDir, 'group', groupId, 1)[0]
+      if (recent?.summary) result.todayGroup = recent.summary
     }
   }
 
-  if (userId) {
-    // 用户画像
-    const imp = path.join(refined, 'users', userId, 'impressions.md')
-    if (fs.existsSync(imp)) {
-      result.userImpression = fs.readFileSync(imp, 'utf8').replace(/\[hash:.*?\]/, '').trim()
+  if (userEnabled) {
+    const userScope = groupId ? 'group_user' : 'private_user'
+    const userTargetId = groupId ? `${groupId}:${userId}` : String(userId)
+    const profile = getProfile(baseDir, userScope, userTargetId)
+    if (profile?.profile) result.userImpression = profile.profile
+
+    const summary = getSummary(baseDir, userScope, userTargetId, currentDate)
+    if (summary?.summary) {
+      result.todayUser = summary.summary
+    } else {
+      const recent = getRecentSummaries(baseDir, userScope, userTargetId, 1)[0]
+      if (recent?.summary) result.todayUser = recent.summary
     }
-    // 今日精炼
-    const today = path.join(refined, 'users', userId, getToday() + '.md')
-    if (fs.existsSync(today)) {
-      result.todayUser = fs.readFileSync(today, 'utf8').replace(/\[hash:.*?\]/, '').trim()
+  }
+
+  if (queryText && (groupEnabled || userEnabled)) {
+    try {
+      result.relevant = await searchRelevantChunks({
+        baseDir,
+        config,
+        groupId: groupEnabled ? groupId : null,
+        userId: userEnabled ? userId : null,
+        queryText
+      })
+    } catch (err) {
+      console.warn(`[Memory] 语义检索失败: ${String(err?.message || err).slice(0, 200)}`)
+      result.relevant = []
     }
   }
 
   return result
-}
-
-function getToday () {
-  const d = new Date()
-  d.setHours(d.getHours() + 8)
-  return d.toISOString().slice(0, 10)
 }

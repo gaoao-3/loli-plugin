@@ -3,19 +3,7 @@
  * 适配 lolicon-core，支持可选 cookie（搜索 VIP 歌曲）
  */
 import { CustomTool } from 'lolicon-core'
-import fs from 'node:fs'
-import path from 'node:path'
-
-const PLUGIN_ROOT = path.resolve('./plugins/chatgpt-plugin')
-
-function getMusicConfig() {
-  try {
-    const cfg = JSON.parse(
-      fs.readFileSync(path.join(PLUGIN_ROOT, 'data/config.json'), 'utf-8')
-    )
-    return cfg.music || null
-  } catch { return null }
-}
+import { fetchWithTimeout, musicAuth } from '../music.js'
 
 class SearchMusic extends CustomTool {
 
@@ -39,11 +27,10 @@ class SearchMusic extends CustomTool {
   async run(args) {
     const { keyword } = args
     try {
-      const music = getMusicConfig()
-      const cookie = music?.cookie_str || ''
+      const auth = musicAuth()
 
       const body = {
-        comm: { uin: music?.uin || '0', authst: '', ct: 29 },
+        comm: { uin: auth.uin, authst: auth.authst, ct: 29 },
         search: {
           method: 'DoSearchForQQMusicMobile',
           module: 'music.search.SearchCgiService',
@@ -59,15 +46,17 @@ class SearchMusic extends CustomTool {
         }
       }
 
-      const res = await fetch('https://u.y.qq.com/cgi-bin/musicu.fcg', {
+      const response = await fetchWithTimeout('https://u.y.qq.com/cgi-bin/musicu.fcg', {
         method: 'POST',
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)',
           'Content-Type': 'application/json',
-          ...(cookie ? { Cookie: cookie } : {})
+          ...(auth.cookie ? { Cookie: auth.cookie } : {})
         },
         body: JSON.stringify(body)
-      }).then(r => r.json())
+      })
+      if (!response.ok) return `QQ音乐搜索接口异常 (HTTP ${response.status})`
+      const res = await response.json()
 
       if (res.code !== 0) return `QQ音乐搜索接口异常 (code: ${res.code})`
 
@@ -81,13 +70,18 @@ class SearchMusic extends CustomTool {
         const album = item.album?.name ? `《${item.album.name}》` : ''
         const mid = item.mid || ''
         const id = item.id || ''
-        return `${i + 1}. ${item.title || item.name} - ${singer} ${album} [mid:${mid}] [id:${id}]`
+        const title = stripTags(item.title || item.name || '未知歌曲')
+        return `${i + 1}. ${title} - ${singer} ${album} [mid:${mid}] [id:${id}]`
       }).join('\n')
 
     } catch (err) {
       return `QQ音乐搜索出错: ${err.message}`
     }
   }
+}
+
+function stripTags (value) {
+  return String(value || '').replace(/<[^>]*>/g, '')
 }
 
 export default new SearchMusic()

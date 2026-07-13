@@ -4,12 +4,18 @@
   "description": "日奈的 QQ 机器人插件 — 基于 lolicon-core 引擎",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "express": "^4.18.0",
     "express-fileupload": "^1.4.0",
     "jimp": "^1.6.1",
     "linkedom": "^0.18.12",
-    "lolicon-core": "file:///C:/Users/30942/WorkBuddy/Claw/lolicon-core"
+    "lolicon-core": "github:gaoao-3/lolicon-core"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -9,7 +9,6 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { createEngine } from 'lolicon-core'
 import defaultConfig from '../config/config.js'
-import { startServer } from '../server/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const PLUGIN_ROOT = path.dirname(path.dirname(__filename))
@@ -51,12 +50,23 @@ function wrapLogger () {
   }
 }
 
+function mergeDefaults (defaults, value) {
+  if (Array.isArray(defaults)) return Array.isArray(value) ? value : [...defaults]
+  if (!defaults || typeof defaults !== 'object') return value === undefined ? defaults : value
+
+  const out = value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {}
+  for (const key of Object.keys(defaults)) {
+    out[key] = mergeDefaults(defaults[key], out[key])
+  }
+  return out
+}
+
 function loadConfig () {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        config = parsed
+        config = mergeDefaults(defaultConfig, parsed)
       } else {
         throw new Error('parsed config is not an object')
       }
@@ -104,6 +114,7 @@ export async function initPlugin () {
   engine = new createEngine({
     dataDir: DATA_DIR,
     toolsDir: TOOLS_DIR,
+    enableMemory: false,
     logger: (msg) => l.info(msg)
   })
   await engine.init()
@@ -135,6 +146,7 @@ export async function initPlugin () {
   // 启动管理面板
   if (config.dashboard?.enable !== false) {
     try {
+      const { startServer } = await import('../server/index.js')
       const serverCtx = {
         engine,
         config,
@@ -157,6 +169,14 @@ export async function initPlugin () {
  * 插件卸载
  */
 export async function destroyPlugin () {
+  try {
+    const { stopScheduler } = await import('../memory/scheduler.js')
+    const { closeMemoryStore } = await import('../memory/store.js')
+    stopScheduler()
+    closeMemoryStore()
+  } catch (err) {
+    pluginLogger?.warn('[loli] 记忆系统卸载失败:', err.message)
+  }
   if (server) {
     await new Promise(resolve => {
       server.close(() => resolve())

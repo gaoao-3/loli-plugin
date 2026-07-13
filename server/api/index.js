@@ -10,7 +10,39 @@ import logRoutes from './logs.js'
 export default function createApiRoutes (ctx) {
   const router = Router()
 
-  router.get('/health', (req, res) => res.json({ status: 'ok' }))
+  // 访问令牌 (authToken) 校验中间件
+  router.use((req, res, next) => {
+    if (req.path === '/health') return next()
+
+    const config = ctx.config || {}
+    const requiredToken = config.dashboard?.authToken || ''
+    
+    // 若配置未设置令牌，则免校验
+    if (!requiredToken) return next()
+
+    // 提取 Token
+    let token = req.headers['authorization'] || req.headers['x-auth-token'] || req.query.token || ''
+    if (typeof token === 'string' && token.startsWith('Bearer ')) {
+      token = token.slice(7)
+    }
+
+    if (typeof token === 'string' && token.trim() === requiredToken.trim()) {
+      return next()
+    }
+
+    if (ctx.logger) {
+      ctx.logger(`[dashboard] Auth validation failed for ${req.method} ${req.originalUrl}`)
+    }
+
+    res.status(401).send('Unauthorized: Invalid authToken')
+  })
+
+  router.get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      authRequired: Boolean(ctx.config?.dashboard?.authToken)
+    })
+  })
 
   router.use('/system', systemRoutes(ctx))
   router.use('/channels', channelRoutes(ctx))

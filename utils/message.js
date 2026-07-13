@@ -1,8 +1,12 @@
-import common from '../../../lib/common/common.js'
-import fetch from 'node-fetch'
-import { Jimp } from 'jimp'
 import { getEngine } from './state.js'
 import { getGroupHistory } from './group.js'
+import { getSelfId, makeForwardMsg, makeImageSegment, makeRecordSegment, normalizeSegment } from './bot.js'
+import {
+  formatOneBotSegmentText,
+  formatRawMessage,
+  compressImage,
+  fetchAndCompressImage
+} from './common.js'
 
 /**
  * 从统一用户消息中提取纯文本内容
@@ -21,62 +25,13 @@ export function extractTextFromUserMessage (userMessage) {
   return ''
 }
 
-/**
- * 将图片 Buffer 压缩到合理大小，用于多模态输入
- *
- * @param {Buffer} buffer 原始图片数据
- * @param {string} mimeType 原始 MIME 类型
- * @param {{
- *   enable: boolean,
- *   maxLongEdge: number,
- *   quality: number,
- *   maxFileSizeKB: number
- * }} options 压缩选项
- * @returns {Promise<{ buffer: Buffer, mimeType: string }>}
- */
-async function compressImage (buffer, mimeType, options = {}) {
-  const {
-    enable = true,
-    maxLongEdge = 1536,
-    quality = 85,
-    maxFileSizeKB = 2048
-  } = options
-
-  if (!enable || !buffer || buffer.length === 0) {
-    return { buffer, mimeType }
-  }
-
-  try {
-    const image = await Jimp.read(buffer)
-    const { width, height } = image.bitmap
-
-    // 等比缩放，限制长边
-    if (width > maxLongEdge || height > maxLongEdge) {
-      image.scaleToFit({ w: maxLongEdge, h: maxLongEdge })
-    }
-
-    // 输出为 JPEG 并控制质量
-    let outputBuffer = await image.getBuffer('image/jpeg', { quality })
-    let outputMimeType = 'image/jpeg'
-
-    // 如果仍超过最大文件大小，逐步降低质量
-    const maxBytes = maxFileSizeKB * 1024
-    let currentQuality = quality
-    while (outputBuffer.length > maxBytes && currentQuality > 30) {
-      currentQuality -= 10
-      outputBuffer = await image.getBuffer('image/jpeg', { quality: currentQuality })
-    }
-
-    // 压缩后反而更大时，保留原图原格式（通常发生在简单色块 PNG 等场景）
-    if (outputBuffer.length >= buffer.length) {
-      return { buffer, mimeType }
-    }
-
-    return { buffer: outputBuffer, mimeType: outputMimeType }
-  } catch (err) {
-    logger.warn?.('[loli] 图片压缩失败，使用原图:', err.message)
-    return { buffer, mimeType }
-  }
+/** 给当前轮添加交互提示，让模型明确知道用户是在叫机器人。 */
+export function addInteractionHint (userMessage, hint) {
+  const text = String(hint || '').trim()
+  if (!text) return userMessage
+  const content = Array.isArray(userMessage?.content) ? [...userMessage.content] : []
+  content.unshift({ type: 'text', text: `[当前交互] ${text}` })
+  return { ...userMessage, content }
 }
 
 /**
@@ -103,7 +58,7 @@ export async function collectHistoryImages (e, options = {}) {
 
   try {
     const chats = await getGroupHistory(e, contextLength)
-    const selfId = String(e.self_id || e.bot?.uin || '')
+    const selfId = getSelfId(e)
     const images = []
     const nowSec = Math.floor(Date.now() / 1000)
 
@@ -120,24 +75,17 @@ export async function collectHistoryImages (e, options = {}) {
       const chatTime = chat.time || 0
       if (nowSec - chatTime > maxAgeSeconds) continue
 
-      for (const seg of chat.message || []) {
+      for (const rawSeg of chat.message || []) {
+        const seg = normalizeSegment(rawSeg)
         if (images.length >= maxImages) break
         if (seg.type !== 'image' || !seg.url) continue
 
         try {
-          const controller = new AbortController()
-          const timeout = setTimeout(() => controller.abort(), 15000)
-          const res = await fetch(seg.url, { signal: controller.signal })
-          clearTimeout(timeout)
-
-          if (!res.ok) {
-            logger.warn(`[loli] fetch history image failed: HTTP ${res.status}`)
-            continue
-          }
-
-          const mimeType = res.headers.get('content-type') || 'image/jpeg'
-          const rawBuffer = Buffer.from(await res.arrayBuffer())
-          const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
+          const compressed = await fetchAndCompressImage(seg.url, {
+            timeoutMs: 15000,
+            retries: 1,
+            imageCompress
+          })
 
           images.push({
             type: 'image',
@@ -206,6 +154,82 @@ export function mergeHistoryImagesIntoUserMessage (userMessage, historyImages) {
 }
 
 /**
+ * 处理引用回复：提取文本、图片、文件信息
+ * @param e
+ * @param {object} options
+ * @returns {Promise<{ text: string, imageContents: Array }>}
+ */
+async function _extractReplyContext (e, options = {}) {
+  const {
+    handleReplyText = false,
+    handleReplyImage = true,
+    handleReplyFile = true,
+    imageCompress = { enable: true, maxLongEdge: 1536, quality: 85, maxFileSizeKB: 2048 }
+  } = options
+
+  let text = ''
+  const imageContents = []
+
+  if (!(e.source || e.reply_id)) return { text, imageContents }
+  if (!handleReplyText && !handleReplyImage && !handleReplyFile) return { text, imageContents }
+
+  let seq = e.isGroup ? (e.source?.seq || e.reply_id) : (e.source?.time || e.source?.time)
+  let reply
+  if (e.getReply && typeof e.getReply === 'function') {
+    const quoted = await e.getReply()
+    reply = quoted?.message || quoted?.data?.message
+  } else {
+    const history = e.isGroup
+      ? await e.group?.getChatHistory?.(seq, 1)
+      : await e.friend?.getChatHistory?.(seq, 1)
+    const list = Array.isArray(history) ? history : history?.messages || history?.data?.messages || []
+    reply = list.at?.(-1)?.message
+  }
+
+  if (!reply) return { text, imageContents }
+
+  const quotedTexts = []
+  for (const rawVal of reply) {
+    const val = normalizeSegment(rawVal)
+    if (val.type === 'image' && handleReplyImage && val.url) {
+      try {
+        const compressed = await fetchAndCompressImage(val.url, {
+          timeoutMs: 15000,
+          retries: 1,
+          imageCompress
+        })
+        imageContents.push({
+          type: 'image',
+          image: compressed.buffer.toString('base64'),
+          mimeType: compressed.mimeType
+        })
+      } catch (err) {
+        logger.warn(`fetch reply image failed: ${err.message}`)
+      }
+    } else if (val.type === 'text' && handleReplyText && val.text) {
+      quotedTexts.push(val.text)
+    } else if (val.type === 'file' && handleReplyFile) {
+      let fileUrl = '获取失败'
+      try {
+        if (e.group?.getFileUrl) {
+          fileUrl = await e.group.getFileUrl(val.fid)
+        } else if (e.friend?.getFileUrl) {
+          fileUrl = await e.friend.getFileUrl(val.fid)
+        }
+      } catch {}
+      const fileName = val.name || val.file || '未知文件'
+      text += `本条消息对一个文件进行了引用回复：${fileName}，下载地址为${fileUrl}\n\n本条消息内容：\n`
+    }
+  }
+
+  if (quotedTexts.length > 0) {
+    text = `本条消息对以下消息进行了引用回复：${quotedTexts.join(' ')}\n\n本条消息内容：\n`
+  }
+
+  return { text, imageContents }
+}
+
+/**
  * 将e中的消息转换为chaite的UserMessage
  *
  * @param e
@@ -236,62 +260,28 @@ export async function intoUserMessage (e, options = {}) {
   } = options
   const contents = []
   let text = ''
-  if ((e.source || e.reply_id) && (handleReplyImage || handleReplyText || handleReplyFile)) {
-    let seq = e.isGroup ? (e.source?.seq || e.reply_id) : (e.source?.time || e.source?.time)
-    let reply
-    if (e.getReply && typeof e.getReply === 'function') {
-      reply = (await e.getReply()).message
-    } else {
-      reply = e.isGroup
-        ? (await e.group.getChatHistory(seq, 1)).pop()?.message
-        : (await e.friend.getChatHistory(seq, 1)).pop()?.message
-    }
-    if (reply) {
-      for (let val of reply) {
-        if (val.type === 'image' && handleReplyImage) {
-          try {
-            const controller = new AbortController()
-            const timeout = setTimeout(() => controller.abort(), 15000)
-            const res = await fetch(val.url, { signal: controller.signal })
-            clearTimeout(timeout)
-            if (res.ok) {
-              const mimeType = res.headers.get('content-type') || 'image/jpeg'
-              const rawBuffer = Buffer.from(await res.arrayBuffer())
-              const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
-              contents.push({
-                type: 'image',
-                image: compressed.buffer.toString('base64'),
-                mimeType: compressed.mimeType
-              })
-            } else {
-              logger.warn(`fetch reply image ${val.url} failed: HTTP ${res.status}`)
-            }
-          } catch (err) {
-            logger.warn(`fetch reply image ${val.url} failed: ${err.message}`)
-          }
-        } else if (val.type === 'text' && handleReplyText) {
-          text = `本条消息对以下消息进行了引用回复：${val.text}\n\n本条消息内容：\n`
-        } else if (val.type === 'file' && handleReplyFile) {
-          let fileUrl = '获取失败'
-          if (e.group?.getFileUrl) {
-            fileUrl = await e.group.getFileUrl(val.fid)
-          } else if (e.friend?.getFileUrl) {
-            fileUrl = await e.friend.getFileUrl(val.fid)
-          }
-          text = `本条消息对一个文件进行了引用回复：该文件的下载地址为${fileUrl}\n\n本条消息内容：\n`
-        }
-      }
-    }
-  }
+
+  // 处理引用回复
+  const { text: replyText, imageContents: replyImages } = await _extractReplyContext(e, {
+    handleReplyText,
+    handleReplyImage,
+    handleReplyFile,
+    imageCompress
+  })
+  if (replyText) text += replyText
+  contents.push(...replyImages)
+
+  // 构建消息文本
   if (useRawMessage) {
-    text += formatRawCQMessage(e.raw_message)
+    text += formatRawMessage(e.raw_message, { includeReply: true })
   } else {
-    for (let val of e.message) {
+    for (const rawVal of e.message || []) {
+      const val = normalizeSegment(rawVal)
       switch (val.type) {
         case 'at': {
           if (handleAtMsg) {
             const { qq, text: atCard } = val
-            if ((toggleMode === 'at' || excludeAtBot) && qq === e.bot?.uin) {
+            if ((toggleMode === 'at' || excludeAtBot) && String(qq) === getSelfId(e)) {
               break
             }
             text += ` @${atCard || qq} `
@@ -304,31 +294,28 @@ export async function intoUserMessage (e, options = {}) {
         }
         default: {
           // 图片/表情/视频/文件等 → AI 可读格式
-          text += ` ${formatSegmentToText(val)} `
+          text += ` ${formatOneBotSegmentText(val)} `
         }
       }
     }
   }
-  for (let element of e.message?.filter(element => element.type === 'image')) {
+
+  // 处理图片（使用共享的 fetchAndCompressImage）
+  for (const element of (e.message || []).map(normalizeSegment).filter(el => el.type === 'image')) {
+    if (!element.url) continue
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 15000)
-      const res = await fetch(element.url, { signal: controller.signal })
-      clearTimeout(timeout)
-      if (res.ok) {
-        const mimeType = res.headers.get('content-type') || 'image/jpeg'
-        const rawBuffer = Buffer.from(await res.arrayBuffer())
-        const compressed = await compressImage(rawBuffer, mimeType, imageCompress)
-        contents.push({
-          type: 'image',
-          image: compressed.buffer.toString('base64'),
-          mimeType: compressed.mimeType
-        })
-      } else {
-        logger.warn(`fetch image ${element.url} failed: HTTP ${res.status}`)
-      }
+      const compressed = await fetchAndCompressImage(element.url, {
+        timeoutMs: 15000,
+        retries: 1,
+        imageCompress
+      })
+      contents.push({
+        type: 'image',
+        image: compressed.buffer.toString('base64'),
+        mimeType: compressed.mimeType
+      })
     } catch (err) {
-      logger.warn(`fetch image ${element.url} failed: ${err.message}`)
+      logger.warn(`fetch image failed: ${err.message}`)
     }
   }
 
@@ -419,38 +406,6 @@ function stripCQCodes (text) {
 }
 
 /**
- * 将 raw_message 中的 CQ 码转为 AI 可读格式
- * [CQ:image,file=xxx] → [图片]
- * [CQ:face,id=178] → [表情]
- * @param {string} raw - e.raw_message
- * @returns {string}
- */
-function formatRawCQMessage (raw) {
-  if (!raw || typeof raw !== 'string') return raw || ''
-  return raw
-    .replace(/\[CQ:image,[^\]]+\]/gi, '[图片]')
-    .replace(/\[CQ:face,[^\]]+\]/gi, '[表情]')
-    .replace(/\[CQ:reply,[^\]]+\]/gi, '[回复引用]')
-    .replace(/\[CQ:video,[^\]]+\]/gi, '[视频]')
-    .replace(/\[CQ:record,[^\]]+\]/gi, '[语音]')
-    .replace(/\[CQ:file,[^\]]+\]/gi, '[文件]')
-    .replace(/\[CQ:share,[^\]]+\]/gi, '[分享链接]')
-    .replace(/\[CQ:location,[^\]]+\]/gi, '[位置]')
-    .replace(/\[CQ:json,[^\]]+\]/gi, '[JSON消息]')
-    .replace(/\[CQ:xml,[^\]]+\]/gi, '[XML消息]')
-    .replace(/\[CQ:poke,[^\]]+\]/gi, '[戳一戳]')
-    .replace(/\[CQ:redbag,[^\]]+\]/gi, '[红包]')
-    .replace(/\[CQ:contact,[^\]]+\]/gi, '[推荐联系人]')
-    .replace(/\[CQ:dice,[^\]]+\]/gi, '[骰子]')
-    .replace(/\[CQ:rps,[^\]]+\]/gi, '[猜拳]')
-    .replace(/\[CQ:music,[^\]]+\]/gi, '[音乐分享]')
-    .replace(/\[CQ:node,[^\]]+\]/gi, '[合并转发]')
-    .replace(/\[CQ:markdown,[^\]]+\]/gi, '[Markdown消息]')
-    // 兜底：剩余的 CQ 码 → 提取类型名
-    .replace(/\[CQ:(\w+),[^\]]*\]/gi, '[$1]')
-}
-
-/**
  * 将 CQ 消息段转为 AI 可读的文本描述
  * NapCat/OneBot 原始 CQ 码如 [CQ:image,...] 对 AI 无意义，
  * 需转为自然语言描述后再传给模型
@@ -459,56 +414,7 @@ function formatRawCQMessage (raw) {
  * @returns {string} AI 可读的文本
  */
 export function formatSegmentToText (segment) {
-  switch (segment.type) {
-    case 'image':
-      return '[图片]'
-    case 'face':
-      // QQ 表情
-      return '[表情]'
-    case 'reply':
-      return '[回复引用]'
-    case 'video':
-      return '[视频]'
-    case 'record':
-    case 'audio':
-      return '[语音]'
-    case 'file': {
-      const name = segment.name || segment.file || ''
-      return name ? `[文件: ${name}]` : '[文件]'
-    }
-    case 'share': {
-      const title = segment.title || ''
-      return title ? `[分享链接: ${title}]` : '[分享链接]'
-    }
-    case 'location': {
-      const loc = segment.title || segment.content || ''
-      return loc ? `[位置: ${loc}]` : '[位置]'
-    }
-    case 'json':
-      return '[JSON消息]'
-    case 'xml':
-      return '[XML消息]'
-    case 'markdown':
-      return '[Markdown消息]'
-    case 'poke':
-      // 戳一戳
-      return '[戳一戳]'
-    case 'redbag':
-      return '[红包]'
-    case 'contact':
-      return '[推荐联系人]'
-    case 'dice':
-      return '[骰子]'
-    case 'rps':
-      return '[猜拳]'
-    case 'music':
-      return '[音乐分享]'
-    case 'node':
-      return '[合并转发]'
-    default:
-      // 未知类型，保留 type 名作为标注
-      return `[${segment.type || '未知消息'}]`
-  }
+  return formatOneBotSegmentText(segment)
 }
 
 /**
@@ -537,20 +443,20 @@ export async function toYunzai (e, contents) {
       case 'image': {
         const imageContent = (/** @type {import('chaite').ImageContent} **/ content).image
         if (imageContent.startsWith('http')) {
-          msgs.push(segment.image(imageContent))
+          msgs.push(makeImageSegment(imageContent))
         } else if (imageContent.startsWith('base64://')) {
-          msgs.push(segment.image(imageContent))
+          msgs.push(makeImageSegment(imageContent))
         } else {
-          msgs.push(segment.image(`base64://${imageContent}`))
+          msgs.push(makeImageSegment(`base64://${imageContent}`))
         }
         break
       }
       case 'audio': {
-        msgs.push(segment.record((/** @type {import('chaite').AudioContent} **/ content).data))
+        msgs.push(makeRecordSegment((/** @type {import('chaite').AudioContent} **/ content).data))
         break
       }
       case 'reasoning': {
-        const reasoning = await common.makeForwardMsg(e, [(/** @type {import('chaite').ReasoningContent} **/ content).text], '思考过程')
+        const reasoning = await makeForwardMsg(e, [(/** @type {import('chaite').ReasoningContent} **/ content).text], '思考过程')
         forward.push(reasoning)
         break
       }
@@ -560,7 +466,7 @@ export async function toYunzai (e, contents) {
     }
   }
   if (forward.length > 1) {
-    const newForward = [await common.makeForwardMsg(e, forward, '多次思考过程')]
+    const newForward = [await makeForwardMsg(e, forward, '多次思考过程')]
     return {
       msgs: msgs.filter(i => !!i), newForward
     }

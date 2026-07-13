@@ -1,231 +1,333 @@
 /**
- * 记忆调度器 — 纯 .md 架构
+ * 记忆调度器 — SQLite 架构
  *
- * 每 1 小时: AI 精炼 raw 对话 → refined YYYY-MM-DD.md（覆盖写入）
- * 每 24 小时: AI 更新画像 → impressions.md（覆盖写入）
- * 每 1 小时: 归档 30 天以上的旧文件
- *
- * 目录结构:
- *   data/memory/
- *     raw/      ← collector 实时追加原始行
- *       groups/{groupId}/YYYY-MM-DD.txt
- *       users/{userId}/YYYY-MM-DD.txt
- *     refined/  ← 调度器 AI 精炼输出
- *       groups/{groupId}/YYYY-MM-DD.md
- *       users/{userId}/YYYY-MM-DD.md
- *       groups/{groupId}/impressions.md
- *       users/{userId}/impressions.md
+ * 每 1 小时: 当日 messages -> summaries
+ * 每 24 小时: 最近 summaries -> profiles
  */
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
+import {
+  archiveOldSummaries,
+  getMessagesForDate,
+  getProcessingState,
+  getProfile,
+  getRecentSummaries,
+  getSummary,
+  listMessageDates,
+  listMessageTargets,
+  listSummaryTargets,
+  pruneOldMessages,
+  updateSchedulerRun,
+  upsertProcessingState,
+  upsertProfile,
+  upsertSummary
+} from './store.js'
+import { embedPendingChunks } from './embedding.js'
 
-// ─── 配置 ──────────────────────────────────────
+const REFINE_INTERVAL_MS = 60 * 60 * 1000
+const FIRST_REFINE_DELAY_MS = 60 * 1000
+const IMPRESSION_INTERVAL_MS = 24 * 60 * 60 * 1000
+const REQUEST_TIMEOUT_MS = 45 * 1000
+const REQUEST_RETRIES = 2
 
-const REFINE_INTERVAL_MS = 60 * 60 * 1000            // 1 hour
-const FIRST_REFINE_DELAY_MS = 60 * 1000               // 启动后 60 秒
-const IMPRESSION_INTERVAL_MS = 24 * 60 * 60 * 1000    // 24 hours
-const ARCHIVE_DAYS = 30
-const ARCHIVE_CHECK_MS = 60 * 60 * 1000               // 1 hour
-
-let archiveHandle = null
 let refineHandle = null
 let impressionHandle = null
+let refineTimeout = null
+let impressionTimeout = null
+let refinementRunning = false
+let impressionRunning = false
 
-const PLUGIN_ROOT = path.resolve('./plugins/loli-plugin')
+const __filename = fileURLToPath(import.meta.url)
+const PLUGIN_ROOT = path.dirname(path.dirname(__filename))
 
-// ─── Public API ─────────────────────────────────
-
-/**
- * @param {Object} opts
- * @param {string} [opts.dataDir] - 记忆数据根目录
- * @param {number} [opts.archiveDays]
- * @param {Object} [opts.logger]
- */
 export function startScheduler (opts = {}) {
-  if (archiveHandle || refineHandle) return
+  if (refineHandle || refineTimeout) return
 
   const rawDir = opts.dataDir || 'data/memory/md'
   const dataDir = path.isAbsolute(rawDir) ? rawDir : path.resolve(PLUGIN_ROOT, rawDir)
-  const archiveDays = opts.archiveDays || ARCHIVE_DAYS
   const log = opts.logger || { info (m) { console.log(m) }, warn (m) { console.warn(m) } }
 
-  // 归档
-  archiveHandle = setInterval(() => {
-    try { runArchive(dataDir, archiveDays) } catch {}
-  }, ARCHIVE_CHECK_MS)
-
-  // 精炼（每 1 小时，首次延迟 60 秒）
-  setTimeout(() => {
-    runRefinement(dataDir, log)
-    refineHandle = setInterval(() => runRefinement(dataDir, log), REFINE_INTERVAL_MS)
+  refineTimeout = setTimeout(() => {
+    refineTimeout = null
+    runRefinement(dataDir, log).catch(err => log.warn(`[Memory] 摘要任务异常: ${formatError(err)}`))
+    refineHandle = setInterval(() => {
+      runRefinement(dataDir, log).catch(err => log.warn(`[Memory] 摘要任务异常: ${formatError(err)}`))
+    }, REFINE_INTERVAL_MS)
   }, FIRST_REFINE_DELAY_MS)
 
-  // 画像（每 24 小时，首次延迟 30 秒）
-  setTimeout(() => {
-    runImpression(dataDir, log)
-    impressionHandle = setInterval(() => runImpression(dataDir, log), IMPRESSION_INTERVAL_MS)
+  impressionTimeout = setTimeout(() => {
+    impressionTimeout = null
+    runImpression(dataDir, log).catch(err => log.warn(`[Memory] 画像任务异常: ${formatError(err)}`))
+    impressionHandle = setInterval(() => {
+      runImpression(dataDir, log).catch(err => log.warn(`[Memory] 画像任务异常: ${formatError(err)}`))
+    }, IMPRESSION_INTERVAL_MS)
   }, 30 * 1000)
 
-  log.info(`[Memory] 调度器启动 (精炼:${REFINE_INTERVAL_MS / 60000}分钟, 画像:24小时, 归档:${archiveDays}天)`)
+  log.info(`[Memory] SQLite 调度器启动 (摘要:${REFINE_INTERVAL_MS / 60000}分钟, 画像:24小时)`)
 }
 
 export function stopScheduler () {
-  if (archiveHandle) { clearInterval(archiveHandle); archiveHandle = null }
+  if (refineTimeout) { clearTimeout(refineTimeout); refineTimeout = null }
+  if (impressionTimeout) { clearTimeout(impressionTimeout); impressionTimeout = null }
   if (refineHandle) { clearInterval(refineHandle); refineHandle = null }
   if (impressionHandle) { clearInterval(impressionHandle); impressionHandle = null }
 }
 
-// ─── 时间工具 ───────────────────────────────────
+export async function runRefinement (baseDir, log = console) {
+  if (refinementRunning) {
+    log.warn('[Memory] 上一轮摘要仍在运行，本轮跳过')
+    return
+  }
+  refinementRunning = true
+  const stats = { processed: 0, succeeded: 0, failed: 0 }
+  updateSchedulerRun(baseDir, 'summary', {
+    startedAt: Date.now(), finishedAt: null, status: 'running', ...stats, error: null
+  })
 
-function today () {
-  const d = new Date()
-  d.setHours(d.getHours() + 8) // UTC+8
-  return d.toISOString().slice(0, 10)
-}
+  try {
+    const dates = listMessageDates(baseDir)
 
-function ensureDir (dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-}
+    for (const d of dates) {
+      const targets = listMessageTargets(baseDir, d)
 
-// ─── 归档 ───────────────────────────────────────
+      for (const target of targets) {
+        const messages = getMessagesForDate(baseDir, target.scope, target.targetId, d)
+        if (messages.length === 0) continue
 
-function runArchive (baseDir, maxDays) {
-  const now = Date.now()
-  const cutoff = maxDays * 24 * 60 * 60 * 1000
+        const raw = formatMessages(messages)
+        const currHash = simpleHash(raw)
+        const state = getProcessingState(baseDir, target.scope, target.targetId, d)
+        if (state?.inputHash === currHash && ['success', 'no_facts'].includes(state.status)) continue
+        const prev = getSummary(baseDir, target.scope, target.targetId, d)
+        if (prev?.hash === currHash) {
+          upsertProcessingState(baseDir, {
+            scope: target.scope, targetId: target.targetId, date: d,
+            inputHash: currHash, status: 'success'
+          })
+          log.info(`[Memory] ${target.scope} ${target.targetId} ${d} 摘要跳过 (无变化)`)
+          continue
+        }
 
-  for (const scope of ['groups', 'users']) {
-    const scopeDir = path.join(baseDir, scope)
-    if (!fs.existsSync(scopeDir)) continue
-    for (const id of fs.readdirSync(scopeDir)) {
-      const refinedDir = path.join(scopeDir, id)
-      if (!fs.statSync(refinedDir).isDirectory()) continue
-      for (const f of fs.readdirSync(refinedDir)) {
-        if (f === 'impressions.md') continue
-        const match = f.match(/^(\d{4}-\d{2}-\d{2})/)
-        if (!match) continue
-        const fileDate = new Date(match[1])
-        if (now - fileDate.getTime() > cutoff) {
-          fs.unlinkSync(path.join(refinedDir, f))
+        stats.processed++
+        const prompt = buildSummaryPrompt(raw, target.scope, target.targetId, d)
+        try {
+          const summary = await callAI(prompt, { task: 'summary', scope: target.scope, log })
+          if (!summary || summary.includes('[NO_FACTS]')) {
+            upsertProcessingState(baseDir, {
+              scope: target.scope, targetId: target.targetId, date: d,
+              inputHash: currHash, status: 'no_facts'
+            })
+            stats.succeeded++
+            continue
+          }
+          upsertSummary(baseDir, {
+            scope: target.scope,
+            targetId: target.targetId,
+            date: d,
+            summary,
+            hash: currHash
+          })
+          upsertProcessingState(baseDir, {
+            scope: target.scope, targetId: target.targetId, date: d,
+            inputHash: currHash, status: 'success'
+          })
+          stats.succeeded++
+          log.info(`[Memory] ${target.scope} ${target.targetId} ${d} 摘要完成`)
+        } catch (err) {
+          stats.failed++
+          upsertProcessingState(baseDir, {
+            scope: target.scope, targetId: target.targetId, date: d,
+            inputHash: currHash, status: 'failed', error: formatError(err)
+          })
+          log.warn(`[Memory] ${target.scope} ${target.targetId} ${d} 摘要失败: ${formatError(err)}`)
         }
       }
     }
+    await embedPendingChunks({ baseDir, config: getConfig(), logger: log, limit: 1000 })
+    const config = getConfig()
+    const pruned = pruneOldMessages(baseDir, config?.memory?.dailyMd?.maxDays || 30)
+    if (pruned) log.info(`[Memory] 已清理 ${pruned} 条过期原始消息`)
+    updateSchedulerRun(baseDir, 'summary', {
+      finishedAt: Date.now(), status: stats.failed ? 'partial' : 'success', ...stats
+    })
+    return stats
+  } catch (err) {
+    updateSchedulerRun(baseDir, 'summary', {
+      finishedAt: Date.now(), status: 'failed', ...stats, error: formatError(err)
+    })
+    throw err
+  } finally {
+    refinementRunning = false
   }
 }
 
-// ─── 精炼 ───────────────────────────────────────
+export async function runImpression (baseDir, log = console) {
+  if (impressionRunning) {
+    log.warn('[Memory] 上一轮画像仍在运行，本轮跳过')
+    return
+  }
+  impressionRunning = true
+  const stats = { processed: 0, succeeded: 0, failed: 0 }
+  updateSchedulerRun(baseDir, 'profile', {
+    startedAt: Date.now(), finishedAt: null, status: 'running', ...stats, error: null
+  })
 
-async function runRefinement (baseDir, log) {
-  const d = today()
-  const refinedBase = path.join(baseDir, 'refined')
+  try {
+    const targets = listSummaryTargets(baseDir)
 
-  for (const [scopeLabel, scopeDir] of [['群组', 'groups'], ['用户', 'users']]) {
-    const rawScope = path.join(baseDir, 'raw', scopeDir)
-    if (!fs.existsSync(rawScope)) continue
+    for (const target of targets) {
+      const summaries = getRecentSummaryRows(baseDir, target.scope, target.targetId, 7)
+      if (summaries.length === 0) continue
 
-    for (const id of fs.readdirSync(rawScope)) {
-      const rawFile = path.join(rawScope, id, d + '.txt')
-      if (!fs.existsSync(rawFile)) continue
-
-      const raw = fs.readFileSync(rawFile, 'utf8').trim()
-      if (!raw) continue
-
-      // 检测是否需要精炼（与上次对比）
-      const refinedFile = path.join(refinedBase, scopeDir, id, d + '.md')
-      const prevHash = readHash(refinedFile)
+      const raw = summaries.map(row => `## ${row.date}\n${row.summary}`).join('\n\n')
       const currHash = simpleHash(raw)
-      if (prevHash === currHash) {
-        log.info(`[Memory] ${scopeLabel} ${id} 精炼跳过 (无变化)`)
-        continue
-      }
+      const prev = getProfile(baseDir, target.scope, target.targetId)
+      if (prev?.hash === currHash) continue
 
-      // 构建精炼提示
-      const prompt = buildRefinePrompt(raw, scopeLabel, id, d)
-
+      stats.processed++
+      const prompt = buildProfilePrompt(raw, target.scope, target.targetId)
       try {
-        const refined = await callAI(prompt)
-        if (!refined || refined.includes('[NO_FACTS]')) continue
-        ensureDir(path.dirname(refinedFile))
-        const finalContent = `# ${d} ${scopeLabel} ${id} 对话精炼\n\n${refined}\n\n[hash:${currHash}]`
-        fs.writeFileSync(refinedFile, finalContent, 'utf8')
-        log.info(`[Memory] ${scopeLabel} ${id} 精炼完成`)
+        const profile = await callAI(prompt, { task: 'profile', scope: target.scope, log })
+        if (!profile) continue
+        upsertProfile(baseDir, {
+          scope: target.scope,
+          targetId: target.targetId,
+          profile,
+          hash: currHash
+        })
+        stats.succeeded++
+        log.info(`[Memory] ${target.scope} ${target.targetId} 画像完成`)
       } catch (err) {
-        log.warn(`[Memory] ${scopeLabel} ${id} 精炼失败: ${err.message.slice(0, 100)}`)
+        stats.failed++
+        log.warn(`[Memory] ${target.scope} ${target.targetId} 画像失败: ${formatError(err)}`)
       }
     }
-  }
-}
-
-// ─── 画像 ───────────────────────────────────────
-
-async function runImpression (baseDir, log) {
-  const refinedBase = path.join(baseDir, 'refined')
-
-  for (const [scopeLabel, scopeDir] of [['群组', 'groups'], ['用户', 'users']]) {
-    const scopePath = path.join(refinedBase, scopeDir)
-    if (!fs.existsSync(scopePath)) continue
-
-    for (const id of fs.readdirSync(scopePath)) {
-      // 聚合最近 7 天的精炼内容
-      const lines = []
-      for (const f of fs.readdirSync(path.join(scopePath, id)).sort().slice(-7)) {
-        if (f === 'impressions.md' || !f.endsWith('.md')) continue
-        const content = fs.readFileSync(path.join(scopePath, id, f), 'utf8')
-          .replace(/#.*?\n/, '')
-          .replace(/\[hash:.*?\]/, '')
-          .trim()
-        if (content) lines.push(content)
-      }
-
-      if (lines.length === 0) continue
-
-      const raw = lines.join('\n\n')
-      const impFile = path.join(scopePath, id, 'impressions.md')
-      const prevHash = readHash(impFile)
-      const currHash = simpleHash(raw)
-      if (prevHash === currHash) continue
-
-      const prompt = `基于以下 ${scopeLabel}「${id}」最近 7 天的精炼对话，生成一份简洁的画像（群组性质、活跃成员特征、讨论话题等）：\n\n${raw.slice(0, 6000)}`
-
-      try {
-        const impression = await callAI(prompt)
-        if (!impression) continue
-        fs.writeFileSync(impFile, `## ${scopeLabel}画像\n\n${impression}\n\n[hash:${currHash}]`, 'utf8')
-        log.info(`[Memory] ${scopeLabel} ${id} 画像更新完成`)
-      } catch (err) {
-        log.warn(`[Memory] ${scopeLabel} ${id} 画像失败: ${err.message.slice(0, 100)}`)
-      }
+    await embedPendingChunks({ baseDir, config: getConfig(), logger: log, limit: 1000 })
+    const config = getConfig()
+    if (config?.memory?.archive?.enable !== false) {
+      const archived = archiveOldSummaries(baseDir, config?.memory?.archive?.archiveDays || 30)
+      if (archived) log.info(`[Memory] 已归档 ${archived} 条旧摘要`)
     }
+    updateSchedulerRun(baseDir, 'profile', {
+      finishedAt: Date.now(), status: stats.failed ? 'partial' : 'success', ...stats
+    })
+    return stats
+  } catch (err) {
+    updateSchedulerRun(baseDir, 'profile', {
+      finishedAt: Date.now(), status: 'failed', ...stats, error: formatError(err)
+    })
+    throw err
+  } finally {
+    impressionRunning = false
   }
 }
 
-// ─── AI 调用 ────────────────────────────────────
+function getRecentSummaryRows (baseDir, scope, targetId, limit) {
+  return getRecentSummaries(baseDir, scope, targetId, limit)
+}
 
-async function callAI (prompt) {
-  const apiKey = getConfigKey()
-  if (!apiKey) return null
+function formatMessages (messages) {
+  return messages.map(msg => {
+    const name = msg.nickname || msg.user_id || msg.role
+    return `[${new Date(msg.created_at).toLocaleTimeString('zh-CN', { hour12: false })}] ${name}: ${msg.text}`
+  }).join('\n')
+}
 
-  // 简单的对话生成
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+async function callAI (prompt, { task = 'summary', scope = 'group', log } = {}) {
+  const cfg = getConfig()
+  const memoryConfig = cfg?.memory || {}
+  const scopeConfig = memoryConfig[scope === 'group' ? 'group' : 'user'] || {}
+  const channelId = task === 'profile'
+    ? (memoryConfig.refinementChannelId || scopeConfig.channelId || memoryConfig.embedding?.channelId)
+    : (scopeConfig.channelId || memoryConfig.extractionChannelId || memoryConfig.embedding?.channelId)
+  const channel = resolveChannel(cfg, channelId)
+  const fallbackModel = cfg?.chaite?.presets?.[0]?.sendMessageOption?.model || firstChannelModel(channel) || 'gemini-2.5-flash'
+  const model = task === 'profile'
+    ? (memoryConfig.refinementModel || fallbackModel)
+    : (scopeConfig.extractionModel || memoryConfig.extractionModel || memoryConfig.refinementModel || fallbackModel)
+  const apiKey = channel?.options?.apiKey || ''
+  const baseUrl = channel?.options?.baseUrl || ''
+  if (!channel) throw new Error(`未找到可用渠道${channelId ? `: ${channelId}` : ''}`)
+  if (!apiKey) throw new Error(`渠道 ${channel.id || channelId || 'unknown'} 未配置 API Key`)
+
+  const url = (baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '') +
+    `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  log?.info?.(`[Memory] 调用 ${task === 'profile' ? '画像' : `${scope}摘要`}模型: channel=${channel.id || 'unknown'}, model=${model}`)
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
     })
-  }).then(r => r.json())
+  }, log)
+  const json = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const detail = json?.error?.message || json?.message || `HTTP ${response.status}`
+    throw new Error(`渠道 ${channel.id || 'unknown'} / 模型 ${model}: HTTP ${response.status} ${detail}`)
+  }
 
-  const text = res?.candidates?.[0]?.content?.parts?.[0]?.text
+  const text = json?.candidates?.[0]?.content?.parts
+    ?.map(part => part?.text || '')
+    .join('')
+    .trim()
+  if (!text) {
+    const reason = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || '响应中没有文本'
+    throw new Error(`渠道 ${channel.id || 'unknown'} / 模型 ${model}: ${reason}`)
+  }
   return text
 }
 
-function getConfigKey () {
-  try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'data', 'config.json'), 'utf8'))
-    return cfg?.chaite?.channels?.[0]?.options?.apiKey || ''
-  } catch { return '' }
+async function fetchWithRetry (url, options, log) {
+  let lastError
+  for (let attempt = 0; attempt <= REQUEST_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      })
+      if (response.ok || response.status < 500 || attempt === REQUEST_RETRIES) return response
+      lastError = new Error(`HTTP ${response.status}`)
+    } catch (err) {
+      lastError = err
+      if (attempt === REQUEST_RETRIES) throw err
+    }
+
+    const delay = 500 * (2 ** attempt)
+    log?.warn?.(`[Memory] 请求失败，${delay}ms 后重试 (${attempt + 1}/${REQUEST_RETRIES})`)
+    await new Promise(resolve => setTimeout(resolve, delay))
+  }
+  throw lastError
 }
 
-// ─── 工具函数 ───────────────────────────────────
+function resolveChannel (cfg, channelId) {
+  const channels = cfg?.chaite?.channels || []
+  if (channelId) {
+    return channels.find(channel => channel.id === channelId && channel.status !== 'disabled')
+  }
+  return channels.find(channel => channel.status !== 'disabled' && channel.adapterType === 'gemini') ||
+    channels.find(channel => channel.status !== 'disabled') ||
+    channels[0]
+}
+
+function firstChannelModel (channel) {
+  const models = Array.isArray(channel?.models) ? channel.models : []
+  return models.flatMap(model => String(model).split(/[,，]/)).map(model => model.trim()).find(Boolean)
+}
+
+function formatError (err) {
+  return String(err?.message || err || 'unknown error').slice(0, 300)
+}
+
+function getConfig () {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'data', 'config.json'), 'utf8'))
+  } catch {
+    return null
+  }
+}
 
 function simpleHash (s) {
   let h = 0
@@ -235,25 +337,20 @@ function simpleHash (s) {
   return String(h)
 }
 
-function readHash (filePath) {
-  if (!fs.existsSync(filePath)) return ''
-  const content = fs.readFileSync(filePath, 'utf8')
-  const match = content.match(/\[hash:([^\]]+)\]/)
-  return match?.[1] || ''
+function buildSummaryPrompt (raw, scope, targetId, date) {
+  const label = scope === 'group' ? '群聊' : scope === 'group_user' ? '群内用户' : '私聊用户'
+  return `请从以下 ${label}原始对话记录中提取关键事实和短期摘要（每条一行，以 "- " 开头）：\n\n时间: ${date}\n对象: ${targetId}\n\n${truncateConversation(raw)}\n\n规则：\n- 只提取有记忆价值的信息，如偏好、计划、项目、重要事件、稳定观点\n- 区分用户与 AI 的发言，不要把 AI 的建议或猜测当成用户事实\n- 忽略寒暄、表情、无意义闲聊\n- 如果没有值得记录的事实，输出：[NO_FACTS]`
 }
 
-function buildRefinePrompt (raw, type, id, date) {
-  const label = type === '群组' ? '群聊' : '用户'
-  return `请从以下 ${label}原始对话记录中提取关键事实（每条一行，以 "- " 开头）：\n\n时间: ${date}\n${type}: ${id}\n\n${raw.slice(0, 5000)}\n\n提取规则：\n- 只提取有长期价值的信息（偏好、事件、计划、观点）\n- 忽略闲聊、问候、表情等无意义内容\n- 每条事实独立一行，简洁明了\n- 如果没有值得记录的事实，输出：[NO_FACTS]`
+function truncateConversation (raw, maxLength = 12000) {
+  if (raw.length <= maxLength) return raw
+  const marker = '\n\n……中间较早的对话已截断……\n\n'
+  const available = maxLength - marker.length
+  const headLength = Math.floor(available * 0.35)
+  return raw.slice(0, headLength) + marker + raw.slice(-(available - headLength))
 }
 
-/**
- * 追加原始对话行到 raw 文件
- * @param {Object} opts
- */
-export function appendRaw ({ baseDir, scope, id, line }) {
-  if (!baseDir || !id || !line) return
-  const file = path.join(baseDir, 'raw', scope, id, today() + '.txt')
-  ensureDir(path.dirname(file))
-  fs.appendFileSync(file, line + '\n', 'utf8')
+function buildProfilePrompt (raw, scope, targetId) {
+  const label = scope === 'group' ? '群聊' : scope === 'group_user' ? '群内用户' : '私聊用户'
+  return `基于以下 ${label}「${targetId}」最近摘要，生成一份简洁长期画像：\n\n${raw.slice(0, 6000)}\n\n要求：\n- 保留稳定偏好、长期项目、互动风格和重要关系\n- 不要编造\n- 用简洁项目符号输出`
 }

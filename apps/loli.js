@@ -3,19 +3,21 @@
  * 适配 lolicon-core 引擎
  */
 import { getEngine, getConfig, DATA_DIR, initPlugin, destroyPlugin } from '../utils/state.js'
-import { intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
-import common from '../../../lib/common/common.js'
+import { addInteractionHint, intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
+import { getSelfId, isGroupEvent, makeAtSegment, makeForwardMsg, normalizeSegment } from '../utils/bot.js'
 import { getGroupContextPrompt, getGroupHistory } from '../utils/group.js'
 import { formatTimeToBeiJing } from '../utils/common.js'
+import { REPLY_SPLIT_MARKER, sendReplyChunks, splitReplyText } from '../utils/reply.js'
 import { buildMemoryPrompt } from '../memory/prompt.js'
 import { collect } from '../memory/collector.js'
 import { randomUUID } from 'crypto'
+import path from 'path'
 
 // segment 由 TRSS-Yunzai 注入为全局变量
 
 // ─── 运行时状态 ────────────────────────────────
 
-/** 会话缓存: uid → { convId, lastTs, burstCount } */
+/** 会话缓存: conversationKey → { convId, lastTs, burstCount } */
 const sessionCache = new Map()
 
 /** 冷却追踪: user → lastReplyTs / group → lastReplyTs */
@@ -25,18 +27,6 @@ const cooldowns = {
 }
 
 // ─── 辅助函数 ──────────────────────────────────
-
-async function pickRandomChatter (e) {
-  if (!e.isGroup) return null
-  try {
-    const chats = await getGroupHistory(e, 15)
-    const selfId = String(e.self_id || e.bot?.uin || '')
-    const chatters = [...new Set(
-      chats.map(c => String(c.sender?.user_id || '')).filter(id => id && id !== selfId && id !== '0')
-    )]
-    return chatters.length > 0 ? chatters[Math.floor(Math.random() * chatters.length)] : null
-  } catch { return null }
-}
 
 async function buildChatterNameMap (e) {
   const map = {}
@@ -75,7 +65,7 @@ function parseAtMentions (text, nameMap) {
   while ((m = structRe.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index))
     const qq = resolveName(m[1], nameMap)
-    parts.push(qq ? segment.at(Number(qq)) : m[0])
+    parts.push(qq ? makeAtSegment(qq) : m[0])
     last = m.index + m[0].length
   }
   if (last > 0) {
@@ -89,7 +79,7 @@ function parseAtMentions (text, nameMap) {
   while ((m = atRe.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index))
     const qq = resolveName(m[1], nameMap)
-    parts.push(qq ? segment.at(Number(qq)) : m[0])
+    parts.push(qq ? makeAtSegment(qq) : m[0])
     last = m.index + m[0].length
   }
   if (last < text.length) parts.push(text.slice(last))
@@ -98,20 +88,74 @@ function parseAtMentions (text, nameMap) {
 
 function _checkManualAt (e) {
   if (!Array.isArray(e.message)) return false
-  const selfId = String(e.self_id || e.bot?.uin || '')
+  const selfId = getSelfId(e)
   if (!selfId) return false
   return e.message.some(seg => {
+    seg = normalizeSegment(seg)
     if (seg.type !== 'at') return false
     const qq = seg.qq || seg.data?.qq
     return String(qq) === selfId
   })
 }
 
+function _idListIncludes (list, id) {
+  if (!Array.isArray(list) || id === null || id === undefined || id === '') return false
+  const idStr = String(id)
+  return list.some(item => String(item) === idStr)
+}
+
+function _isChatAllowed (cfg, uid, gid) {
+  if (_idListIncludes(cfg.blackUsers, uid)) return false
+  if (gid && _idListIncludes(cfg.blackGroups, gid)) return false
+  if (gid && Array.isArray(cfg.groups) && cfg.groups.length > 0 && !_idListIncludes(cfg.groups, gid)) {
+    return false
+  }
+  return true
+}
+
+function _getConversationKey (cfg, uid, gid) {
+  const mode = cfg.conversationMode || 'group'
+  if (gid && mode === 'group') return `group:${gid}`
+  if (gid && mode === 'mixed') return `group:${gid}:user:${uid}`
+  return `user:${uid}`
+}
+
+function _resolveMemoryBaseDir () {
+  const dataDir = getConfig().memory?.dailyMd?.dataDir || 'data/memory/md'
+  return path.isAbsolute(dataDir) ? dataDir : path.resolve(DATA_DIR, '..', dataDir)
+}
+
+function _formatTriggerLog (trigger, uid, gid) {
+  const scope = gid ? `group=${gid}` : 'private'
+  const detail = trigger.hitPrefix
+    ? ` prefix=${trigger.hitPrefix}`
+    : trigger.hitKeyword
+      ? ` keyword=${trigger.hitKeyword}`
+      : ''
+  return `[loli] trigger type=${trigger.type} ${scope} user=${uid}${detail}`
+}
+
+function _getInteractionHint (trigger, inGroup) {
+  if (!inGroup) return '用户正在私聊你，这条消息是在直接对你说。'
+  if (trigger.type === 'at') {
+    return trigger.source === 'alias'
+      ? '用户通过你的名字或别名叫了你，这条消息是在明确对你说。'
+      : '用户明确 @ 了你，这条消息是在直接对你说；请回应当前发送者。'
+  }
+  if (trigger.type === 'prefix') {
+    return `用户使用唤醒前缀“${trigger.hitPrefix}”叫了你，这条消息是在对你说。`
+  }
+  if (trigger.type === 'keyword') {
+    return `用户使用唤醒词“${trigger.hitKeyword}”叫了你，这条消息是在对你说。`
+  }
+  return ''
+}
+
 /**
  * 检查群聊最后一条消息是否自己发的（防自问自答）
  */
 async function _isLastMessageFromSelf (e, selfId) {
-  if (!e.isGroup) return false
+  if (!isGroupEvent(e)) return false
   try {
     const last = await getGroupHistory(e, 1)
     if (last.length > 0) {
@@ -131,7 +175,7 @@ export class loli extends plugin {
       event: 'message',
       priority: 6000,
       rule: [{
-        reg: '^(?:[^#]|$)',
+        reg: '^[\\s\\S]*$',
         fnc: 'loli',
         log: false
       }]
@@ -142,17 +186,23 @@ export class loli extends plugin {
     const cfg = getConfig()?.loli
     if (!cfg?.enable) return { type: null }
 
-    if (e.isPrivate && cfg.enableAtTrigger !== false) {
-      return { type: 'at' }
+    if ((e.isPrivate || e.message_type === 'private') && cfg.enableAtTrigger !== false) {
+      return { type: 'at', source: 'private' }
     }
 
-    const atTriggered = e.atBot || e.hasAlias || _checkManualAt(e)
-    if (atTriggered && cfg.enableAtTrigger !== false) {
-      return { type: 'at' }
+    const manuallyAtBot = _checkManualAt(e)
+    if ((e.atBot || manuallyAtBot) && cfg.enableAtTrigger !== false) {
+      return { type: 'at', source: 'mention' }
+    }
+    if (e.hasAlias && cfg.enableAtTrigger !== false) {
+      return { type: 'at', source: 'alias' }
     }
 
-    if (cfg.enablePrefixTrigger && cfg.triggerPrefix?.length) {
-      const matched = cfg.triggerPrefix.find(p => e.msg?.startsWith(p))
+    const triggerPrefix = Array.isArray(cfg.triggerPrefix) && cfg.triggerPrefix.length > 0
+      ? cfg.triggerPrefix
+      : ['#ai']
+    if (cfg.enablePrefixTrigger !== false && triggerPrefix.length) {
+      const matched = triggerPrefix.find(p => e.msg?.startsWith(p))
       if (matched) return { type: 'prefix', hitPrefix: matched }
     }
 
@@ -172,16 +222,47 @@ export class loli extends plugin {
     const engine = getEngine()
     if (!engine) return false
 
-    const selfId = String(e.self_id || e.bot?.uin || '')
+    const selfId = getSelfId(e)
     if (selfId && String(e.user_id || e.sender?.user_id || '') === selfId) return false
-
-    const trigger = this._resolveTrigger(e)
-    if (!trigger.type) return false
 
     const cfg = getConfig().loli
     const chaiteConfig = getConfig().chaite
     const uid = String(e.user_id || e.sender?.user_id || '0')
-    const gid = e.isGroup ? String(e.group_id) : null
+    const inGroup = isGroupEvent(e)
+    const gid = inGroup ? String(e.group_id || e.group?.group_id || e.group?.gid) : null
+
+    if (!_isChatAllowed(cfg, uid, gid)) return false
+
+    const trigger = this._resolveTrigger(e)
+    if (!trigger.type) return false
+    logger.info(_formatTriggerLog(trigger, uid, gid))
+
+    const conversationKey = _getConversationKey(cfg, uid, gid)
+    return this._handleLoli(e, {
+      engine,
+      cfg,
+      chaiteConfig,
+      uid,
+      gid,
+      inGroup,
+      selfId,
+      trigger,
+      conversationKey
+    })
+  }
+
+  async _handleLoli (e, context) {
+    const {
+      engine,
+      cfg,
+      chaiteConfig,
+      uid,
+      gid,
+      inGroup,
+      selfId,
+      trigger,
+      conversationKey
+    } = context
     const now = Date.now()
 
     // ── 自问自答保护 ────────────────────────────
@@ -206,16 +287,16 @@ export class loli extends plugin {
     let conversationId
     let burstCount = 0
 
-    const cached = sessionCache.get(uid)
+    const cached = sessionCache.get(conversationKey)
     if (cached && (now - cached.lastTs) < sessionWindow) {
       conversationId = cached.convId
       burstCount = (cached.burstCount || 0) + 1
       cached.lastTs = now
       cached.burstCount = burstCount
     } else {
-      conversationId = 'loli-' + uid + '-' + now
+      conversationId = 'loli-' + conversationKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + now
       burstCount = 1
-      sessionCache.set(uid, { convId: conversationId, lastTs: now, burstCount: 1 })
+      sessionCache.set(conversationKey, { convId: conversationId, lastTs: now, burstCount: 1 })
     }
 
     // ── 优雅退出检查 ────────────────────────────
@@ -242,12 +323,6 @@ export class loli extends plugin {
     if (cfg.temperature >= 0) sendOpts.temperature = cfg.temperature
     if (cfg.maxTokens > 0) sendOpts.maxTokens = cfg.maxTokens
 
-    // 前缀触发时去除前缀
-    let rawMsg = e.msg || ''
-    if (trigger.type === 'prefix' && trigger.hitPrefix) {
-      rawMsg = rawMsg.slice(trigger.hitPrefix.length).trim()
-    }
-
     // 构建用户消息
     let userMessage
     if (trigger.type === 'proactive') {
@@ -260,23 +335,20 @@ export class loli extends plugin {
       userMessage = await intoUserMessage(e, {
         handleReplyText: true,
         handleReplyImage: true,
-        useRawMessage: trigger.type !== 'prefix',
+        useRawMessage: false,
         handleAtMsg: true,
-        excludeAtBot: false,
+        excludeAtBot: true,
+        toggleMode: trigger.type === 'prefix' ? 'prefix' : 'at',
+        togglePrefix: trigger.hitPrefix || null,
         imageCompress: cfg.imageCompress
       })
-      if (trigger.type === 'prefix' && rawMsg) {
-        const tc = userMessage.content?.find(c => c.type === 'text')
-        if (tc) tc.text = rawMsg
-        else if (rawMsg) userMessage.content.push({ type: 'text', text: rawMsg })
-      }
 
       // 群聊历史多图识别：把最近其他成员发的图片也加入当前请求
-      if (e.isGroup && cfg.historyImages?.enable) {
+      if (inGroup && cfg.historyImages?.enable) {
         const historyImages = await collectHistoryImages(e, {
           maxImages: cfg.historyImages.maxImages,
           maxAgeSeconds: cfg.historyImages.maxAgeSeconds,
-          contextLength: cfg.contextLength,
+          contextLength: cfg.historyImages.contextLength ?? cfg.contextLength,
           imageCompress: cfg.imageCompress
         })
         if (historyImages.length > 0) {
@@ -286,29 +358,37 @@ export class loli extends plugin {
     }
 
     const userText = extractTextFromUserMessage(userMessage) || e.msg || ''
+    const interactionHint = _getInteractionHint(trigger, inGroup)
+    if (interactionHint) userMessage = addInteractionHint(userMessage, interactionHint)
 
     // 构建群友昵称映射
-    const chatterNameMap = e.isGroup ? await buildChatterNameMap(e) : {}
+    const chatterNameMap = inGroup ? await buildChatterNameMap(e) : {}
 
     // 构建系统提示
     const systemSegments = []
     const systemText = preset.systemPrompt?.content || chaiteConfig.presets?.find(p => p.id === presetId)?.systemPrompt?.content || ''
-    if (systemText) {
-      systemSegments.push(systemText + '\n当前时间: ' + formatTimeToBeiJing(now))
-    }
+    if (systemText) systemSegments.push(systemText)
+    systemSegments.push(`[运行环境]\n当前北京时间：${formatTimeToBeiJing(now)}\n时区：Asia/Shanghai（UTC+8）`)
 
     // 记忆提示
-    const baseDir = getConfig().memory?.dailyMd?.dataDir || (DATA_DIR + '/memory/md')
+    const baseDir = _resolveMemoryBaseDir()
     const memoryPrompt = await buildMemoryPrompt({
       baseDir,
-      groupId: e.isGroup ? String(e.group_id) : null,
-      userId: uid
+      groupId: gid,
+      userId: uid,
+      queryText: userText,
+      config: getConfig()
     })
     if (memoryPrompt) systemSegments.push(memoryPrompt)
 
     // 群聊上下文
-    if (e.isGroup && cfg.contextLength > 0) {
-      const ctx = await getGroupContextPrompt(e, cfg.contextLength)
+    if (inGroup && cfg.contextLength > 0) {
+      const ctx = await getGroupContextPrompt(e, cfg.contextLength, {
+        // 排除 bot 自己的历史发言，避免 AI 看到自己之前说的话造成自指/循环
+        excludeSelfId: selfId,
+        // 排除当前正在处理的这条消息，避免与 userMessage 内容重复
+        excludeMessageId: [e.message_id, e.seq, e.source?.seq]
+      })
       if (ctx) systemSegments.push(ctx)
     }
 
@@ -317,9 +397,13 @@ export class loli extends plugin {
       systemSegments.push('[系统指令] 这是本轮对话的最后一次回复，自然地结束对话并道别，不要生硬地说"再见"或"拜拜"，继续保持你的性格和语气。')
     }
 
-    if (systemSegments.length > 0) {
-      sendOpts.systemOverride = systemSegments.join('\n\n')
+    if (cfg.segmentedReply?.enable !== false) {
+      systemSegments.push(`[回复分段规则]
+由你根据语气和语义决定是否分成多条聊天消息。需要分段时，只在两段之间输出 ${REPLY_SPLIT_MARKER}；不需要分段时不要输出该标记。
+每段都必须是可以单独发送的自然聊天内容。不要逐句机械分段，不要连续输出标记，不要解释或展示此规则。普通换行不代表分段。`)
     }
+
+    const systemPromptOverride = systemSegments.length > 0 ? systemSegments.join('\n\n') : undefined
 
     // 发送消息
     const result = await engine.sendMessage({
@@ -328,17 +412,27 @@ export class loli extends plugin {
       conversationId,
       userMessage,
       event: e,
-      overrideOptions: sendOpts
+      overrideOptions: sendOpts,
+      systemPromptOverride
     })
 
     const responseText = result.finalText
+    let deliveredResponseText = responseText
 
     // 回复消息
     if (responseText) {
-      const parts = parseAtMentions(responseText, chatterNameMap)
-      if (parts.length > 0) {
-        const recall = cfg.recallDefault || 0
-        await e.reply(parts, false, { recallMsg: recall > 0 ? recall : 0 })
+      const segmentedReply = cfg.segmentedReply || {}
+      const chunks = splitReplyText(responseText, segmentedReply)
+      deliveredResponseText = chunks.join('\n')
+      const sentCount = await sendReplyChunks(e, chunks, {
+        ...segmentedReply,
+        recallSeconds: cfg.recallDefault || 0,
+        transform: chunk => parseAtMentions(chunk, chatterNameMap)
+      })
+      if (sentCount > 1) {
+        const sentAt = Date.now()
+        cooldowns.user.set(uid, sentAt)
+        if (gid) cooldowns.group.set(gid, sentAt)
       }
     }
 
@@ -351,7 +445,7 @@ export class loli extends plugin {
         .trim()
       if (reasoningText) {
         try {
-          const fwd = await common.makeForwardMsg(e, [reasoningText], '思考过程')
+          const fwd = await makeForwardMsg(e, [reasoningText], '思考过程')
           await e.reply(fwd)
         } catch (err) {
           logger.warn(`[loli] 发送思考过程失败: ${err.message}`)
@@ -364,8 +458,8 @@ export class loli extends plugin {
       const burstCooldown = cfg.burstCooldown ?? 180000  // 默认 3 分钟
       cooldowns.user.set(uid, now + burstCooldown)
       if (gid) cooldowns.group.set(gid, now + burstCooldown)
-      sessionCache.delete(uid)
-      logger.debug(`[loli] burst exhausted for ${uid}, cooling down ${burstCooldown}ms`)
+      sessionCache.delete(conversationKey)
+      logger.debug(`[loli] burst exhausted for ${conversationKey}, cooling down ${burstCooldown}ms`)
     }
 
     // 记忆采集
@@ -374,7 +468,8 @@ export class loli extends plugin {
         baseDir,
         event: e,
         userText,
-        assistantText: responseText
+        assistantText: deliveredResponseText,
+        config: getConfig()
       })
     }
   }

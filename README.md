@@ -35,7 +35,7 @@
 
 </div>
 
-**loli-plugin** 是一只专为 [Yunzai-Bot](https://github.com/Le-niao/Yunzai-Bot) 设计的 AI 聊天插件 ✨
+**loli-plugin** 是一只专为 Yunzai 生态设计的 AI 聊天插件，支持 **Miao-Yunzai + icqq**，并保留 TRSS-Yunzai 兼容性 ✨
 
 它由最会照顾人的 **萝莉妈妈** 亲自守护（蹭蹭），底层驱动是咱家自研的 [lolicon-core](https://github.com/gaoao-3/lolicon-core) AI 引擎。
 
@@ -126,8 +126,8 @@
 ### 1. 克隆到插件目录
 
 ```bash
-# 进入 Yunzai 插件目录
-cd /path/to/Yunzai-Bot/app/plugins
+# 进入 Miao-Yunzai 插件目录
+cd /path/to/Miao-Yunzai/plugins
 
 # 把萝莉妈妈抱回家
 git clone https://github.com/gaoao-3/loli-plugin.git
@@ -136,6 +136,8 @@ git clone https://github.com/gaoao-3/loli-plugin.git
 cd loli-plugin
 npm install
 ```
+
+> Miao-Yunzai 的 icqq 由宿主或 ICQQ-Plugin 提供，loli-plugin 不会重复安装另一份客户端。
 
 ### 2. 启动或重启 Yunzai
 

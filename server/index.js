@@ -18,12 +18,42 @@ const PLUGIN_ROOT = path.resolve(__dirname, '..')
 export function createServer (ctx) {
   const app = express()
 
+  // 全局 charset 中间件 — 所有 text/* 和 application/json 响应追加 utf-8
+  app.use((req, res, next) => {
+    const origSend = res.send
+    res.send = function (body) {
+      const ct = res.getHeader('Content-Type')
+      if (ct && typeof ct === 'string') {
+        if ((ct.startsWith('text/') || ct.startsWith('application/json')) && !ct.includes('charset')) {
+          res.setHeader('Content-Type', `${ct}; charset=utf-8`)
+        }
+      }
+      return origSend.call(this, body)
+    }
+    next()
+  })
+
   app.use(express.json())
   app.use(express.urlencoded({ extended: true }))
   app.use(fileUpload({ createParentPath: true }))
 
-  // 静态面板文件
-  app.use('/dashboard', express.static(path.join(PLUGIN_ROOT, 'dashboard')))
+  // 静态面板文件 — 显式设置 charset=utf-8，防止中文 Windows 浏览器回退到 GBK
+  const mimeTypes = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.svg': 'image/svg+xml'
+  }
+  const staticOpts = {
+    setHeaders: (res, filePath) => {
+      const ext = path.extname(filePath).toLowerCase()
+      if (mimeTypes[ext]) {
+        res.setHeader('Content-Type', `${mimeTypes[ext]}; charset=utf-8`)
+      }
+    }
+  }
+  app.use('/dashboard', express.static(path.join(PLUGIN_ROOT, 'dashboard'), staticOpts))
 
   // API 路由
   app.use('/api', apiRoutes(ctx))
@@ -35,7 +65,7 @@ export function createServer (ctx) {
 
   // 面板路由兜底（SPA）
   app.get('/dashboard/*', (req, res) => {
-    res.sendFile(path.join(PLUGIN_ROOT, 'dashboard', 'index.html'))
+    res.type('html').sendFile(path.join(PLUGIN_ROOT, 'dashboard', 'index.html'))
   })
 
   // 错误处理

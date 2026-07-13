@@ -3,77 +3,1011 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>日奈控制台 - loli-plugin</title>
-  <link rel="stylesheet" href="/dashboard/css/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Hina AI Studio</title>
+  <link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
+  <link rel="stylesheet" href="/dashboard/css/style.css?v=20260712-2">
 </head>
-<body>
+<body class="bg-main">
+
+  <!-- Background overlay grid -->
+  <div class="bg-premium-svg" aria-hidden="true">
+    <div class="bg-grid-overlay"></div>
+  </div>
+
   <div class="app">
+    <!-- Sidebar Navigation -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="logo">
-          <span class="logo-icon">🥱</span>
-          <span class="logo-text">日奈控制台</span>
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </div>
+          <div class="logo-text-wrapper">
+            <span class="logo-text">Hina AI Studio</span>
+            <span class="logo-subtext">WORKSPACE // DEV</span>
+          </div>
         </div>
-        <button class="sidebar-close" id="sidebarClose">×</button>
+        <button class="sidebar-close-btn" id="sidebarClose" aria-label="Close menu">×</button>
       </div>
+
       <nav class="nav">
         <a href="#overview" class="nav-item active" data-page="overview">
-          <span class="nav-icon">📊</span>
-          <span>总览</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+          <span class="nav-label">总览</span>
         </a>
         <a href="#channels" class="nav-item" data-page="channels">
-          <span class="nav-icon">🤖</span>
-          <span>渠道</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="3" y2="3"/><line x1="12" x2="20" y1="12" y2="12"/><line x1="4" x2="8" y1="12" y2="12"/><line x1="4" x2="10" y1="16" y2="16"/><line x1="14" x2="20" y1="16" y2="16"/><line x1="4" x2="14" y1="8" y2="8"/><line x1="18" x2="20" y1="8" y2="8"/></svg>
+          <span class="nav-label">渠道管理</span>
         </a>
         <a href="#presets" class="nav-item" data-page="presets">
-          <span class="nav-icon">🎭</span>
-          <span>预设</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          <span class="nav-label">角色预设</span>
         </a>
         <a href="#tools" class="nav-item" data-page="tools">
-          <span class="nav-icon">🧰</span>
-          <span>工具</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          <span class="nav-label">工具插件</span>
         </a>
         <a href="#memory" class="nav-item" data-page="memory">
-          <span class="nav-icon">🧠</span>
-          <span>记忆</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+          <span class="nav-label">记忆系统</span>
         </a>
         <a href="#config" class="nav-item" data-page="config">
-          <span class="nav-icon">⚙️</span>
-          <span>配置</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="nav-label">系统配置</span>
         </a>
         <a href="#logs" class="nav-item" data-page="logs">
-          <span class="nav-icon">📜</span>
-          <span>日志</span>
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><path d="M14 2v6h6"/><path d="M3 15h10"/><path d="M3 18h10"/></svg>
+          <span class="nav-label">运行日志</span>
         </a>
       </nav>
+
       <div class="sidebar-footer">
-        <div class="version">v<span id="version">0.1.0</span></div>
-        <div class="status" id="connectionStatus">
-          <span class="status-dot online"></span>
-          <span>已连接</span>
+        <!-- Sidebar Toggle trigger -->
+        <button class="sidebar-collapse-trigger" id="sidebarCollapseTrigger" title="折叠导航栏">
+          <svg class="collapse-icon-left" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          <svg class="collapse-icon-right hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+          <span class="collapse-label">折叠导航栏</span>
+        </button>
+
+        <div class="footer-version-row">
+          <span class="version-label">v<span id="version">1.1.0</span></span>
+          <button class="btn btn-logout-icon" id="logoutBtn" title="退出登录">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+            <span class="logout-text">退出</span>
+          </button>
         </div>
       </div>
     </aside>
 
-    <main class="main">
+    <!-- Main Content wrapper -->
+    <div class="main">
       <header class="header">
-        <button class="menu-toggle" id="menuToggle">☰</button>
-        <h1 class="page-title" id="pageTitle">总览</h1>
-        <div class="header-actions">
-          <button class="btn btn-ghost" id="refreshBtn" title="刷新数据">🔄</button>
-          <button class="btn btn-ghost" id="themeBtn" title="切换主题">🌙</button>
+        <div class="header-left">
+          <button class="menu-toggle" id="menuToggle" aria-label="Open menu">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          </button>
+          <h1 class="page-title" id="pageTitle">// 总览 WORKSPACE</h1>
+        </div>
+        <div class="header-right">
+          <div class="global-spinner hidden" id="globalSpinner"></div>
         </div>
       </header>
 
-      <div class="content" id="content">
-        <!-- Pages will be injected here -->
+      <!-- Viewport pages slider -->
+      <div class="content-scroller" id="contentScroller">
+        <div class="pages-wrapper" id="pagesWrapper">
+          
+          <!-- Pane 1: Overview -->
+          <div class="page-pane" id="pane-overview">
+            <div class="pane-content select-text">
+              <div class="card-grid">
+                <div class="card">
+                  <span class="card-title">系统状态</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="ov-status">正常运行</span>
+                    <span class="badge" id="ov-status-badge">OK</span>
+                  </div>
+                  <p class="card-subtitle" id="ov-message">系统正常运行中</p>
+                </div>
+                <div class="card">
+                  <span class="card-title">可用渠道</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="ov-channels-active">0</span>
+                    <span class="card-note" id="ov-channels-total">共 0 个</span>
+                  </div>
+                  <span class="card-subtitle">支持多适配器热切换</span>
+                </div>
+                <div class="card">
+                  <span class="card-title">可用插件</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="ov-tools-active">0</span>
+                    <span class="card-note" id="ov-tools-total">共 0 个</span>
+                  </div>
+                  <span class="card-subtitle">支持热重载与文件上传</span>
+                </div>
+                <div class="card">
+                  <span class="card-title">运行时长</span>
+                  <div class="card-value-row">
+                    <span class="card-value font-mono" id="ov-uptime">0s</span>
+                    <span class="card-tag uppercase">UPTIME</span>
+                  </div>
+                  <span class="card-subtitle">自服务最后一次启动</span>
+                </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="card mt-4">
+                <span class="card-section-title">// 快捷导航</span>
+                <div class="flex-row gap-2.5 mt-2 flex-wrap">
+                  <button class="btn btn-primary" onclick="refreshAllData()">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 3h5v5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 21H3v-5"/></svg>
+                    同步数据
+                  </button>
+                  <button class="btn btn-secondary" onclick="navigate('channels')">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="3" y2="3"/><line x1="12" x2="20" y1="12" y2="12"/><line x1="4" x2="8" y1="12" y2="12"/></svg>
+                    管理渠道
+                  </button>
+                  <button class="btn btn-secondary" onclick="navigate('tools')">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/></svg>
+                    管理工具
+                  </button>
+                  <button class="btn btn-secondary" onclick="navigate('memory')">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    系统数据
+                  </button>
+                </div>
+              </div>
+
+              <!-- Details Table -->
+              <div class="card mt-4">
+                <div class="flex-row justify-between items-center pb-2 border-b border-[#2c2e35] mb-2">
+                  <span class="text-sm font-semibold text-slate-200">// 控制台运行参数明细</span>
+                  <span class="badge badge-success font-mono uppercase" id="ov-online-badge">Online</span>
+                </div>
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>项目指标</th>
+                        <th>运行明细</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ov-details-body">
+                      <!-- Rendered by app.js -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 2: Channels -->
+          <div class="page-pane" id="pane-channels">
+            <div class="pane-content select-text">
+              <div class="flex-row justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-white">// AI 渠道管理</h2>
+                <button class="btn btn-primary" onclick="handleOpenChannelAdd()">
+                  <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                  添加新渠道
+                </button>
+              </div>
+
+              <div class="card">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>名称 / ID</th>
+                        <th>适配器</th>
+                        <th>支持模型</th>
+                        <th>状态</th>
+                        <th class="text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="channels-list-body">
+                      <!-- Rendered dynamically -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 3: Presets -->
+          <div class="page-pane" id="pane-presets">
+            <div class="pane-content select-text">
+              <div class="flex-row justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-white">// 预设角色管理</h2>
+                <button class="btn btn-primary" onclick="handleOpenPresetAdd()">
+                  <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                  新建预设
+                </button>
+              </div>
+
+              <div class="card-grid" id="presets-list-grid">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 4: Tools -->
+          <div class="page-pane" id="pane-tools">
+            <div class="pane-content select-text">
+              <div class="flex-row justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-white">// 工具扩展插件</h2>
+                <div class="flex-row gap-2">
+                  <button class="btn btn-secondary" onclick="handleReloadTools()">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 3h5v5"/></svg>
+                    重新加载
+                  </button>
+                  <button class="btn btn-primary" onclick="handleOpenToolUpload()">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                    导入插件
+                  </button>
+                </div>
+              </div>
+
+              <div class="card-grid" id="tools-list-grid">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 5: Memory -->
+          <div class="page-pane" id="pane-memory">
+            <div class="pane-content select-text">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div class="card">
+                  <span class="card-title">消息索引数</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="mem-messages">0</span>
+                    <span class="text-xs text-[#8e9099] font-semibold">条对话</span>
+                  </div>
+                  <span class="card-subtitle">已持久化索引的上下文消息</span>
+                </div>
+                <div class="card">
+                  <span class="card-title">摘要与画像</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="mem-total-dims">0</span>
+                    <span class="text-xs text-[#8e9099] font-semibold">个维度</span>
+                  </div>
+                  <span class="card-subtitle" id="mem-dims-subtitle">包含 0 条群摘要 & 0 个用户特征</span>
+                </div>
+                <div class="card">
+                  <span class="card-title">向量检索数</span>
+                  <div class="card-value-row">
+                    <span class="card-value" id="mem-embeddings">0</span>
+                    <span class="text-xs text-[#8e9099] font-semibold">个向量</span>
+                  </div>
+                  <span class="card-subtitle">已存储的多维语义特征向量</span>
+                </div>
+              </div>
+
+              <!-- Memory breakdown -->
+              <div class="card">
+                <span class="card-section-title mb-6 block">// 记忆库细分构成</span>
+                <div class="flex-column gap-5">
+                  <div class="progress-item">
+                    <div class="flex-row justify-between text-xs mb-1">
+                      <span class="text-slate-300 font-medium">群组摘要 (Active Summaries)</span>
+                      <span class="badge" id="mem-prog-summaries-val">0 条</span>
+                    </div>
+                    <div class="progress-bar-track">
+                      <div class="progress-bar bg-blue" id="mem-prog-summaries" style="width: 0%"></div>
+                    </div>
+                  </div>
+                  <div class="progress-item">
+                    <div class="flex-row justify-between text-xs mb-1">
+                      <span class="text-slate-300 font-medium">每日归档日记 (Archived md)</span>
+                      <span class="badge" id="mem-prog-archived-val">0 份</span>
+                    </div>
+                    <div class="progress-bar-track">
+                      <div class="progress-bar bg-orange" id="mem-prog-archived" style="width: 0%"></div>
+                    </div>
+                  </div>
+                  <div class="progress-item">
+                    <div class="flex-row justify-between text-xs mb-1">
+                      <span class="text-slate-300 font-medium">成员画像 (User Profiles)</span>
+                      <span class="badge" id="mem-prog-profiles-val">0 个</span>
+                    </div>
+                    <div class="progress-bar-track">
+                      <div class="progress-bar bg-gray" id="mem-prog-profiles" style="width: 0%"></div>
+                    </div>
+                  </div>
+                  <div class="progress-item">
+                    <div class="flex-row justify-between text-xs mb-1">
+                      <span class="text-slate-300 font-medium">向量索引块 (Memory Chunks)</span>
+                      <span class="badge" id="mem-prog-chunks-val">0 块</span>
+                    </div>
+                    <div class="progress-bar-track">
+                      <div class="progress-bar bg-green" id="mem-prog-chunks" style="width: 0%"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- DB Path -->
+              <div class="card mt-4">
+                <span class="card-section-title block mb-2">// SQLite 数据库文件物理地址</span>
+                <div class="flex-row gap-3 items-center bg-black/30 border border-[#2c2e35] rounded-lg p-3">
+                  <span class="flex-1 font-mono text-xs text-slate-300 break-all select-all" id="mem-db-path">
+                    正在载入 SQLite 数据库...
+                  </span>
+                  <button class="btn-copy" id="copyMemPathBtn" title="复制路径">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Pane 6: Config -->
+          <div class="page-pane" id="pane-config">
+            <div class="pane-content select-text">
+              <div class="flex-row justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-white">// 系统参数配置</h2>
+                <button class="btn btn-primary" onclick="handleSaveConfig()">
+                  <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  保存全局配置
+                </button>
+              </div>
+
+              <!-- Tabs selection inside config page -->
+              <div class="config-tabs-nav">
+                <button class="config-tab-btn active" data-tab="cfg-trigger">触发与范围</button>
+                <button class="config-tab-btn" data-tab="cfg-session">会话与冷却</button>
+                <button class="config-tab-btn" data-tab="cfg-model">模型与媒体</button>
+                <button class="config-tab-btn" data-tab="cfg-memory">记忆系统</button>
+                <button class="config-tab-btn" data-tab="cfg-system">模板与系统</button>
+              </div>
+
+              <!-- Config Sheets wrapper -->
+              <div class="config-sheets-container mt-4">
+                
+                <!-- Sheet 1: Trigger -->
+                <div class="config-sheet active" id="sheet-cfg-trigger">
+                  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                    <div class="lg:col-span-3 flex-column gap-4">
+                      <div class="card">
+                        <span class="card-section-title mb-3 block">// 关键词与触发前缀 (换行分隔)</span>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">前缀触发词</label>
+                            <textarea id="inp-triggerPrefix" rows="5" class="form-textarea font-mono"></textarea>
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">响应关键词</label>
+                            <textarea id="inp-triggerKeywords" rows="5" class="form-textarea font-mono"></textarea>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="card">
+                        <span class="card-section-title mb-3 block">// 响应范围名单 (黑白名单, 换行分隔)</span>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">群白名单 (留空为全部)</label>
+                            <textarea id="inp-groups" rows="5" class="form-textarea font-mono"></textarea>
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">群黑名单</label>
+                            <textarea id="inp-blackGroups" rows="5" class="form-textarea font-mono"></textarea>
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">用户黑名单</label>
+                            <textarea id="inp-blackUsers" rows="5" class="form-textarea font-mono"></textarea>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="lg:col-span-2 flex-column gap-4">
+                      <div class="card">
+                        <span class="card-section-title mb-3 block">// 触发条件开关</span>
+                        <div class="flex-column gap-3">
+                          <div class="toggle-switch-row">
+                            <span class="text-xs font-medium text-slate-300">伪人模式总开关</span>
+                            <button class="switch" id="sw-enable"><span></span></button>
+                          </div>
+                          <div class="toggle-switch-row">
+                            <span class="text-xs font-medium text-slate-300">@ 提到与私聊触发</span>
+                            <button class="switch" id="sw-enableAtTrigger"><span></span></button>
+                          </div>
+                          <div class="toggle-switch-row">
+                            <span class="text-xs font-medium text-slate-300">特定前缀词触发</span>
+                            <button class="switch" id="sw-enablePrefixTrigger"><span></span></button>
+                          </div>
+                          <div class="toggle-switch-row">
+                            <span class="text-xs font-medium text-slate-300">消息包含关键词触发</span>
+                            <button class="switch" id="sw-enableKeywordTrigger"><span></span></button>
+                          </div>
+                          <div class="toggle-switch-row">
+                            <span class="text-xs font-medium text-slate-300">群员闲聊主动触发</span>
+                            <button class="switch" id="sw-enableProactiveTrigger"><span></span></button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="card">
+                        <span class="card-section-title mb-3 block">// 默认触发参数</span>
+                        <div class="flex-column gap-4">
+                          <div class="flex-column gap-1">
+                            <label class="text-xs text-[#8e9099]">默认绑定预设 ID</label>
+                            <input id="inp-defaultPreset" type="text" class="form-input">
+                          </div>
+                          <div class="flex-column gap-1">
+                            <div class="flex-row justify-between text-xs">
+                              <span class="text-[#8e9099]">主动回复概率</span>
+                              <span class="font-bold text-[#a8c7fa] bg-[#a8c7fa]/10 px-1.5 py-0.2 rounded font-mono" id="val-promptProbability">0.00</span>
+                            </div>
+                            <input id="inp-promptProbability" type="range" min="0.0" max="1.0" step="0.01" class="ai-range-slider mt-2">
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sheet 2: Session -->
+                <div class="config-sheet" id="sheet-cfg-session">
+                  <div class="card">
+                    <span class="card-section-title mb-3 block">// 会话上下文及冷却限制</span>
+                    <div class="flex-column gap-5">
+                      <div class="toggle-switch-row max-w-sm">
+                        <span class="text-xs font-medium text-slate-300">附带发送推理思考过程 (Reasoning)</span>
+                        <button class="switch" id="sw-sendReasoning"><span></span></button>
+                      </div>
+
+                      <div class="toggle-switch-row max-w-sm">
+                        <span class="text-xs font-medium text-slate-300">由 AI 自主决定自然分段</span>
+                        <button class="switch" id="sw-segmentedReply"><span></span></button>
+                      </div>
+
+                      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">对话维度划分模式</label>
+                          <select id="inp-conversationMode" class="form-select">
+                            <option value="group">群维度</option>
+                            <option value="user">用户维度</option>
+                            <option value="mixed">群 + 用户混合</option>
+                          </select>
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">携带历史上下文条数</label>
+                          <input id="inp-contextLength" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">会话自动过期窗口 (ms)</label>
+                          <input id="inp-sessionWindow" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">用户单人发言冷却 (ms)</label>
+                          <input id="inp-cooldownUser" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">群聊触发冷却 (ms)</label>
+                          <input id="inp-cooldownGroup" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">连发限制次数</label>
+                          <input id="inp-maxReplyBurst" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">防刷屏惩罚冷却 (ms)</label>
+                          <input id="inp-burstCooldown" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">发送后自动撤回 (秒, 0不撤)</label>
+                          <input id="inp-recallDefault" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">分段最短字符数</label>
+                          <input id="inp-segmentMinLength" type="number" min="0" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">AI 未分段时的兜底字符数</label>
+                          <input id="inp-segmentMaxLength" type="number" min="1" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">单次最多分段数</label>
+                          <input id="inp-segmentMaxSegments" type="number" min="1" max="20" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">分段最短间隔 (ms)</label>
+                          <input id="inp-segmentDelayMin" type="number" min="0" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">分段最长间隔 (ms)</label>
+                          <input id="inp-segmentDelayMax" type="number" min="0" class="form-input">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sheet 3: Model -->
+                <div class="config-sheet" id="sheet-cfg-model">
+                  <div class="flex-column gap-4">
+                    <div class="card">
+                      <span class="card-section-title mb-3 block">// 全局模型参数覆盖 (设置为 -1 或 0 代表关闭)</span>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div class="flex-column gap-1.5">
+                          <div class="flex-row justify-between text-xs">
+                            <span class="text-[#8e9099]">Temperature (温度覆盖, -1.0 代表不覆盖)</span>
+                            <span class="font-bold text-[#a8c7fa] bg-[#a8c7fa]/10 px-1.5 py-0.2 rounded font-mono" id="val-global-temp">默认 (-1)</span>
+                          </div>
+                          <input id="inp-global-temp" type="range" min="-1.0" max="2.0" step="0.1" class="ai-range-slider mt-2">
+                        </div>
+
+                        <div class="flex-column gap-1.5">
+                          <div class="flex-row justify-between text-xs">
+                            <span class="text-[#8e9099]">Max Tokens (长度覆盖, 0 代表不覆盖)</span>
+                            <span class="font-bold text-[#a8c7fa] bg-[#a8c7fa]/10 px-1.5 py-0.2 rounded font-mono" id="val-global-tokens">默认 (0)</span>
+                          </div>
+                          <input id="inp-global-tokens" type="range" min="0" max="8192" step="256" class="ai-range-slider mt-2">
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card">
+                      <div class="flex-row justify-between items-center border-b border-[#2c2e35] pb-2 mb-3">
+                        <span class="text-xs font-bold text-[#8e9099]">// 多媒体图片自动压缩优化</span>
+                        <button class="switch" id="sw-compress-enable"><span></span></button>
+                      </div>
+                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">图片最大分辨率边长 (px)</label>
+                          <input id="inp-compress-maxLongEdge" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">压缩 JPEG 质量 (1-100)</label>
+                          <input id="inp-compress-quality" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">限制单张体积最大值 (KB)</label>
+                          <input id="inp-compress-maxFileSizeKB" type="number" class="form-input">
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card">
+                      <div class="flex-row justify-between items-center border-b border-[#2c2e35] pb-2 mb-3">
+                        <span class="text-xs font-bold text-[#8e9099]">// 多模态历史图片深度</span>
+                        <button class="switch" id="sw-history-enable"><span></span></button>
+                      </div>
+                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">携带历史图片最大数量</label>
+                          <input id="inp-history-maxImages" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">图片缓存有效留存时间 (秒)</label>
+                          <input id="inp-history-maxAgeSeconds" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">向后回溯消息检测范围</label>
+                          <input id="inp-history-contextLength" type="number" class="form-input">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sheet 4: Memory -->
+                <div class="config-sheet" id="sheet-cfg-memory">
+                  <div class="flex-column gap-4">
+                    <div class="card">
+                      <span class="card-section-title mb-3 block">// 记忆归纳大模型关联</span>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <div class="toggle-switch-row">
+                          <span class="text-xs font-medium text-slate-300">群聊天记录摘要归纳</span>
+                          <button class="switch" id="sw-mem-group-enable"><span></span></button>
+                        </div>
+                        <div class="toggle-switch-row">
+                          <span class="text-xs font-medium text-slate-300">成员特征行为画像</span>
+                          <button class="switch" id="sw-mem-user-enable"><span></span></button>
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">群摘要模型</label>
+                          <input id="inp-mem-group-model" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">群摘要模型渠道 ID</label>
+                          <input id="inp-mem-group-channel" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">用户画像模型</label>
+                          <input id="inp-mem-user-model" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">用户画像模型渠道 ID</label>
+                          <input id="inp-mem-user-channel" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">画像重整归并模型</label>
+                          <input id="inp-mem-refine-model" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">画像重整归并渠道 ID</label>
+                          <input id="inp-mem-refine-channel" type="text" class="form-input">
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card">
+                      <div class="flex-row justify-between items-center border-b border-[#2c2e35] pb-2 mb-3">
+                        <span class="text-xs font-bold text-[#8e9099]">// 语义向量数据库检索 (Vector Embedding)</span>
+                        <button class="switch" id="sw-embed-enable"><span></span></button>
+                      </div>
+
+                      <div class="flex-column gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">Embedding 核心模型</label>
+                            <input id="inp-embed-model" type="text" class="form-input">
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">Embedding 模型渠道</label>
+                            <input id="inp-embed-channel" type="text" class="form-input">
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">向量输出维度 (dimensions)</label>
+                            <input id="inp-embed-dim" type="number" class="form-input">
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">召回数量 (topK)</label>
+                            <input id="inp-embed-topk" type="number" class="form-input">
+                          </div>
+                          <div class="flex-column gap-1.5">
+                            <label class="text-xs text-[#8e9099]">语义最低匹配分数 (0-1)</label>
+                            <input id="inp-embed-minScore" type="number" step="0.01" class="form-input">
+                          </div>
+                        </div>
+
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">单独启用记忆归纳的群号列表 (换行分隔)</label>
+                          <textarea id="inp-mem-group-enabledGroups" rows="3" class="form-textarea font-mono"></textarea>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sheet 5: System -->
+                <div class="config-sheet" id="sheet-cfg-system">
+                  <div class="flex-column gap-4">
+                    <div class="card">
+                      <span class="card-section-title mb-3 block">// 群聊上下文格式渲染模板 (微调 prompt)</span>
+                      <div class="flex-column gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">头部附加说明 (Template Prefix)</label>
+                          <textarea id="inp-tpl-prefix" rows="3" class="form-textarea font-mono"></textarea>
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">对话行渲染格式 (e.g. $[name]: $[message])</label>
+                          <textarea id="inp-tpl-message" rows="3" class="form-textarea font-mono"></textarea>
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">尾部结束指令 (Template Suffix)</label>
+                          <textarea id="inp-tpl-suffix" rows="3" class="form-textarea font-mono"></textarea>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card">
+                      <div class="flex-row justify-between items-center border-b border-[#2c2e35] pb-2 mb-3">
+                        <span class="text-xs font-bold text-[#8e9099]">// 管理控制台本地服务</span>
+                        <button class="switch" id="sw-dash-enable"><span></span></button>
+                      </div>
+
+                      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">控制台监听端口</label>
+                          <input id="inp-dash-port" type="number" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">服务绑定 IP (host)</label>
+                          <input id="inp-dash-host" type="text" class="form-input">
+                        </div>
+                        <div class="flex-column gap-1.5">
+                          <label class="text-xs text-[#8e9099]">控制台安全令牌 (authToken)</label>
+                          <input id="inp-dash-token" type="password" class="form-input">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 7: Logs -->
+          <div class="page-pane" id="pane-logs">
+            <div class="pane-content logs-pane-content flex-column gap-4 select-text">
+              
+              <!-- Logs Header Actions -->
+              <div class="flex-row flex-wrap justify-between items-center gap-4 flex-shrink-0">
+                <div class="flex-row gap-3 flex-wrap items-center">
+                  <h2 class="text-lg font-bold text-white">// 终端日志</h2>
+                  <select id="logs-level-select" class="form-select py-1 w-[160px]">
+                    <option value="ALL">所有日志 (ALL)</option>
+                    <option value="DEBUG">运行调试 (DEBUG)</option>
+                    <option value="INFO">系统普通 (INFO)</option>
+                    <option value="WARN">警告信息 (WARN)</option>
+                    <option value="ERROR">致命异常 (ERROR)</option>
+                  </select>
+                  <input id="logs-search-input" type="text" placeholder="过滤关键词..." class="form-input py-1 w-[180px]">
+                </div>
+
+                <div class="flex-row gap-2">
+                  <button class="btn btn-secondary py-1.5" id="logsToggleRefreshBtn">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="9" x2="9" y1="9" y2="15"/><line x1="15" x2="15" y1="9" y2="15"/></svg>
+                    <span id="logsToggleRefreshText">暂停刷新</span>
+                  </button>
+                  <button class="btn btn-secondary py-1.5" onclick="handleCopyLogs()">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    复制日志
+                  </button>
+                  <button class="btn btn-danger py-1.5" onclick="handleClearLogs()">
+                    <svg class="mr-1.5 inline" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    清空日志
+                  </button>
+                </div>
+              </div>
+
+              <!-- Terminal log window -->
+              <div class="flex-1 min-h-0 border border-[#2c2e35] bg-[#0b0d10] rounded-lg overflow-hidden flex flex-col">
+                <div class="flex-column h-full min-h-0 relative">
+                  <div class="h-8 bg-[#13151a] border-b border-[#2c2e35] flex items-center justify-between px-4 flex-shrink-0">
+                    <div class="flex-row items-center gap-2 text-[10px] font-mono text-[#8e9099]">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+                      <span>TERMINAL OUTPUT // STDOUT</span>
+                    </div>
+                    <div class="flex gap-1.5">
+                      <span class="w-2 h-2 rounded-full bg-red-500/25"></span>
+                      <span class="w-2 h-2 rounded-full bg-yellow-500/25"></span>
+                      <span class="w-2 h-2 rounded-full bg-green-500/25"></span>
+                    </div>
+                  </div>
+                  <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-relaxed flex flex-col gap-1.5 bg-black/45" id="terminalLogs">
+                    <!-- Logs list rows -->
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
       </div>
-    </main>
+    </div>
+
+    <!-- Mobile nav bar -->
+    <nav class="bottom-nav" id="bottomNav">
+      <!-- Populated in app.js -->
+    </nav>
+
+    <!-- Swipe edges helper -->
+    <div id="edgeGestureHandle" class="edge-gesture-handle" aria-hidden="true"></div>
+
+    <!-- Toast Notifications Root -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Auth prompt overlay gate -->
+    <div class="auth-overlay hidden" id="authOverlay">
+      <div class="auth-card">
+        <div class="auth-header">
+          <div class="auth-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/></svg>
+          </div>
+          <h2 class="auth-title">登入 Hina AI Studio</h2>
+          <p class="auth-subtitle">此服务受到安全令牌保护，请输入机器人管理员配置的 `authToken` 进行身份校验</p>
+        </div>
+        <div class="auth-body">
+          <div class="flex-column gap-2">
+            <label class="text-xs text-[#8e9099] font-medium">安全访问令牌 (authToken)</label>
+            <input type="password" id="auth-token-input" placeholder="输入验证令牌" class="form-input text-center font-mono py-2">
+          </div>
+          <button class="btn btn-primary w-full py-2.5 mt-2" id="authSubmitBtn">验证并登入</button>
+          <p class="auth-error-msg hidden font-mono text-[10px] text-center mt-2 text-[#f28b82]" id="authErrorMsg"></p>
+        </div>
+        <div class="auth-footer text-[9px]">
+          GEHENNA BOT WORKSPACE SECURE GATEWAY
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals declarations -->
+    <!-- Channel Modal -->
+    <div class="modal-overlay hidden" id="channelModal">
+      <div class="modal-card max-w-[450px]">
+        <div class="modal-header">
+          <span class="modal-title" id="channelModalTitle">添加 AI 渠道</span>
+          <button class="modal-close" onclick="closeChannelModal()">×</button>
+        </div>
+        <div class="modal-body flex-column gap-3.5">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex-column gap-1">
+              <label class="text-[10px] text-[#8e9099] font-medium">渠道 ID</label>
+              <input id="channel-form-id" type="text" placeholder="gemini" class="form-input">
+            </div>
+            <div class="flex-column gap-1">
+              <label class="text-[10px] text-[#8e9099] font-medium">渠道名称</label>
+              <input id="channel-form-name" type="text" placeholder="谷歌官方" class="form-input">
+            </div>
+          </div>
+          <div class="flex-column gap-1">
+            <label class="text-[10px] text-[#8e9099] font-medium">API 适配器</label>
+            <select id="channel-form-adapter" class="form-select">
+              <option value="gemini">Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="anythingllm">AnythingLLM</option>
+            </select>
+          </div>
+          <div class="flex-column gap-1">
+            <label class="text-[10px] text-[#8e9099] font-medium">支持模型列表 (英文逗号分隔)</label>
+            <input id="channel-form-models" type="text" placeholder="gemini-2.5-flash, gemini-2.5-pro" class="form-input">
+          </div>
+          <div class="flex-column gap-1">
+            <label class="text-[10px] text-[#8e9099] font-medium">API Key</label>
+            <input id="channel-form-apikey" type="password" placeholder="请输入密钥..." class="form-input">
+          </div>
+          <div class="flex-column gap-1">
+            <label class="text-[10px] text-[#8e9099] font-medium">Base URL (API 终结点)</label>
+            <input id="channel-form-baseurl" type="text" placeholder="默认使用官方端点，如需中转请填写" class="form-input">
+          </div>
+        </div>
+        <div class="modal-footer justify-end">
+          <button class="btn btn-secondary" onclick="closeChannelModal()">取消</button>
+          <button class="btn btn-primary" onclick="saveChannelForm()">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preset Modal -->
+    <div class="modal-overlay hidden" id="presetModal">
+      <div class="modal-card max-w-[920px] p-0 flex flex-col overflow-hidden">
+        <div class="modal-header px-5 py-3 border-b border-[#2c2e35]">
+          <span class="modal-title text-xs font-bold uppercase tracking-wider" id="presetModalTitle">配置预设角色 (Hina AI Studio)</span>
+          <button class="modal-close text-lg font-bold" onclick="closePresetModal()">×</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-0 md:h-[480px] bg-[#0b0d10] overflow-hidden">
+          
+          <!-- Left: Prompt Sandbox -->
+          <div class="md:col-span-3 flex-column h-full overflow-y-auto p-4 border-r border-[#2c2e35]">
+            <div class="flex-column gap-1.5 h-full">
+              <div class="flex-row justify-between items-center">
+                <label class="text-[10px] text-[#a8c7fa] font-bold tracking-wide uppercase">系统指示 (System Instructions)</label>
+                <span class="text-[9px] text-[#8e9099] font-mono">System Prompt Editor</span>
+              </div>
+              <textarea id="preset-form-prompt" placeholder="您可以在此处详细定义该角色的系统设定、语气特点与人设偏好..." class="flex-1 w-full font-mono text-xs leading-relaxed bg-[#13151a] border border-[#2c2e35] p-3 rounded-lg focus:border-[#a8c7fa] outline-none resize-none min-h-[260px] text-white"></textarea>
+            </div>
+          </div>
+
+          <!-- Right: parameters control -->
+          <div class="md:col-span-2 flex-column h-full overflow-y-auto p-4 justify-between bg-[#13151a]">
+            <div class="flex-column gap-4">
+              <div class="flex-row items-center gap-1.5 pb-1.5 border-b border-[#2c2e35]">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a8c7fa" stroke-width="2"><line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="3" y2="3"/><line x1="12" x2="20" y1="12" y2="12"/><line x1="4" x2="8" y1="12" y2="12"/></svg>
+                <span class="text-[10px] font-bold text-[#e3e2e6] uppercase tracking-wide">参数控制 (Settings)</span>
+              </div>
+
+              <!-- Identity Row -->
+              <div class="grid grid-cols-2 gap-3">
+                <div class="flex-column gap-1">
+                  <label class="text-[10px] text-[#8e9099] font-medium">预设唯一 ID</label>
+                  <input id="preset-form-id" type="text" placeholder="hina" class="form-input">
+                </div>
+                <div class="flex-column gap-1">
+                  <label class="text-[10px] text-[#8e9099] font-medium">角色显示名称</label>
+                  <input id="preset-form-name" type="text" placeholder="空崎日奈" class="form-input">
+                </div>
+              </div>
+
+              <!-- Channel select -->
+              <div class="flex-column gap-1">
+                <label class="text-[10px] text-[#8e9099] font-medium">绑定模型渠道</label>
+                <select id="preset-form-channel" class="form-select"></select>
+              </div>
+
+              <!-- Model input -->
+              <div class="flex-column gap-1">
+                <label class="text-[10px] text-[#8e9099] font-medium">目标执行大模型</label>
+                <input id="preset-form-model" type="text" placeholder="gemini-2.5-flash" class="form-input">
+              </div>
+
+              <!-- Temperature range slider -->
+              <div class="flex-column gap-1">
+                <div class="flex-row justify-between items-center text-[10px]">
+                  <span class="text-[#8e9099] font-medium">温度 (Temperature)</span>
+                  <span class="font-mono text-[#a8c7fa] bg-[#a8c7fa]/10 px-1.5 py-0.2 rounded font-bold" id="preset-form-temp-val">0.9</span>
+                </div>
+                <input id="preset-form-temp" type="range" min="0.0" max="2.0" step="0.1" class="ai-range-slider w-full">
+              </div>
+
+              <!-- Max Tokens range slider -->
+              <div class="flex-column gap-1">
+                <div class="flex-row justify-between items-center text-[10px]">
+                  <span class="text-[#8e9099] font-medium">长度 (Max Output Tokens)</span>
+                  <span class="font-mono text-[#a8c7fa] bg-[#a8c7fa]/10 px-1.5 py-0.2 rounded font-bold" id="preset-form-tokens-val">2048</span>
+                </div>
+                <input id="preset-form-tokens" type="range" min="256" max="8192" step="256" class="ai-range-slider w-full">
+              </div>
+
+              <!-- Top P override -->
+              <div class="flex-column gap-1">
+                <label class="text-[10px] text-[#8e9099] font-medium">核采样比率 (Top P, 留空默认)</label>
+                <input id="preset-form-topp" type="text" placeholder="可选输入，例如 0.95" class="form-input">
+              </div>
+
+              <!-- CoT Reasoning -->
+              <div class="flex-column gap-2 p-2 bg-black/20 border border-[#2c2e35] rounded-lg">
+                <div class="flex-row justify-between items-center">
+                  <div class="flex-column">
+                    <span class="text-[11px] font-semibold text-[#e3e2e6]">启动思考模型推理</span>
+                    <span class="text-[8px] text-[#8e9099]">支持输出思维链 (CoT)</span>
+                  </div>
+                  <button class="switch" id="preset-form-reasoning"><span></span></button>
+                </div>
+                <div class="flex-column gap-1.5 border-t border-[#2c2e35] pt-2">
+                  <label class="text-[9px] text-[#8e9099] font-medium">思考字数额度 (Thinking Level)</label>
+                  <select id="preset-form-thinking-level" class="form-select p-1 text-[10px]"></select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer block inside right pane -->
+            <div class="flex-row justify-end gap-2 pt-4 mt-4 border-t border-[#2c2e35] bg-transparent">
+              <button class="btn btn-secondary" onclick="closePresetModal()">取消</button>
+              <button class="btn btn-primary font-bold" onclick="savePresetForm()">保存预设</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool Upload Modal -->
+    <div class="modal-overlay hidden" id="toolModal">
+      <div class="modal-card max-w-[450px]">
+        <div class="modal-header">
+          <span class="modal-title">导入自定义扩展 (.js)</span>
+          <button class="modal-close" onclick="closeToolModal()">×</button>
+        </div>
+        <div class="modal-body flex-column gap-3.5">
+          <div class="drop-zone" id="toolDropZone">
+            <input type="file" id="tool-form-file" accept=".js" class="hidden">
+            <div class="drop-zone-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            </div>
+            <div class="drop-zone-text">
+              <span class="block-label font-bold text-white">拖拽并放置 .js 插件文件</span>
+              <span class="block-sublabel text-[10px] text-[#8e9099]">或者点击区域进行文件选择</span>
+            </div>
+          </div>
+
+          <div class="file-info-bar hidden" id="toolFileInfoBar">
+            <div class="flex-row items-center gap-2 text-green-400 text-xs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span class="font-bold truncate max-w-[200px]" id="toolFileName">-</span>
+              <span class="text-[9px] font-mono opacity-85" id="toolFileSize">(0 KB)</span>
+            </div>
+            <button class="text-red-400 hover:text-red-300 font-bold text-xs" onclick="clearSelectedToolFile()">×</button>
+          </div>
+        </div>
+        <div class="modal-footer justify-end">
+          <button class="btn btn-secondary" onclick="closeToolModal()">取消</button>
+          <button class="btn btn-primary" id="toolUploadBtn" onclick="submitToolUpload()" disabled>上传至服务器</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <div class="toast-container" id="toastContainer"></div>
-
-  <script src="/dashboard/js/app.js"></script>
+  <script src="/dashboard/js/app.js?v=20260713-1"></script>
 </body>
 </html>

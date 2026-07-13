@@ -9,7 +9,7 @@ export default function toolRoutes (ctx) {
 
   function listTools () {
     const loaded = ctx.engine.toolLoader.getAll()
-    const loadedMap = new Map(loaded.map(t => [t.name, t]))
+    const loadedMap = new Map(loaded.map(t => [path.basename(t._file || `${t.name}.js`, '.js'), t]))
 
     const tools = []
     const enabledFiles = fs.existsSync(toolsDir) ? fs.readdirSync(toolsDir).filter(f => f.endsWith('.js')) : []
@@ -20,6 +20,7 @@ export default function toolRoutes (ctx) {
       const t = loadedMap.get(name)
       tools.push({
         name,
+        toolName: t?.name || name,
         path: path.join(toolsDir, file),
         description: t?.toolDef?.description || t?.toolDef?.function?.description || '无描述',
         enabled: true
@@ -30,6 +31,7 @@ export default function toolRoutes (ctx) {
       const name = file.replace(/\.js$/, '')
       tools.push({
         name,
+        toolName: name,
         path: path.join(disabledDir, file),
         description: '已禁用',
         enabled: false
