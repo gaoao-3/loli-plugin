@@ -1,6 +1,3 @@
 onlyBuiltDependencies:
   - '@google/genai'
   - protobufjs
-
-patchedDependencies:
-  lolicon-core@0.2.0: patches/lolicon-core@0.2.0.patch
