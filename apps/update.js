@@ -18,6 +18,8 @@ export class loliUpdate extends plugin {
   }
 
   async doUpdate (e) {
+    if (!e.isMaster) return e.reply('只有主人可以更新 loli-plugin。')
+
     await e.reply('🔄 正在更新 loli-plugin...')
     try {
       const out = await _exec('git -c user.name=loli -c user.email=loli@bot -C ./plugins/loli-plugin/ pull --no-rebase')
@@ -28,6 +30,8 @@ export class loliUpdate extends plugin {
   }
 
   async doForceUpdate (e) {
+    if (!e.isMaster) return e.reply('只有主人可以强制更新 loli-plugin。')
+
     await e.reply('🔄 正在强制更新 loli-plugin...')
     try {
       const out = await _exec(
