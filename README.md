@@ -45,7 +45,7 @@
 - 🧠 用 SQLite 摘要、角色主观记忆和语义向量召回延续互动
 - 🛠️ 本地工具热加载，即传即用，不用宝宝动手
 - 🎵 支持 QQ 音乐账户、VIP 检测、Cookie 刷新和音乐工具
-- 🖥️ 内置 Web 管理面板，支持访问令牌保护
+- 🖥️ 使用 lolicon-core 自带 Web 管理面板，支持访问令牌保护
 
 一句话：**更轻、更快、更会被抱抱～** (｡･ω･｡)ﾉ♡
 
@@ -92,14 +92,14 @@ SQLite 消息库 + 身份账本
 ### 🛠️ 工具热加载
 
 本地工具文件自动发现
-<br>面板一键上传/重载/禁用
+<br>core 面板一键上传/重载/禁用
 
 </td>
 <td align="center">
 
 ### 🖥️ Web 面板
 
-随 Yunzai 启动自动运行
+由 lolicon-core 提供并随 Yunzai 启动
 <br>无需单独起服务
 
 </td>
@@ -139,7 +139,7 @@ pnpm install
 ```
 
 > Miao-Yunzai 的 icqq 由宿主或 ICQQ-Plugin 提供，loli-plugin 不会重复安装另一份客户端。
-> 依赖中的 `lolicon-core` 直接跟随其 GitHub 主仓库，无需再应用本地补丁。
+> 依赖中的 `lolicon-core` 直接锁定其 GitHub 主仓库提交，无需本地补丁；面板和引擎升级由 core 仓库统一发布。
 
 ### 2. 启动或重启 Yunzai
 
@@ -262,11 +262,14 @@ http://localhost:3000
 
 ✨ 面板会自动启动，不需要宝宝单独跑服务！✨
 
+面板静态资源、Vue 源码、HTTP 服务与 REST API 均位于 `lolicon-core`；本插件只在 [utils/state.js](utils/state.js) 中向引擎注入插件配置、运行日志、工具目录、宿主 Bot 和 SQLite 记忆统计。插件卸载时由 `engine.destroy()` 一并关闭面板，因此更新面板不再改动插件业务代码。
+
 ### 面板能做什么？
 
 | 模块 | 功能 |
 |------|------|
 | 📊 总览 | 系统状态、渠道数、工具数、运行时间 |
+| 💬 对话 | 选择预设、模拟用户/群号、调试完整消息管道和历史 |
 | 🔌 渠道 | 查看/编辑/启用禁用 AI 渠道 |
 | 🎭 预设 | 管理角色预设和系统提示词 |
 | 🛠️ 工具 | 热重载、上传新工具、启用禁用 |
@@ -325,26 +328,18 @@ http://localhost:3000
 ├── 📁 apps/              # 群聊/私聊消息处理模块
 ├── 📁 config/            # 默认配置文件
 │   └── config.js
-├── 📁 dashboard/         # 🖥️ Web 管理面板
-│   ├── index.html
-│   ├── css/style.css
-│   └── js/app.js
 ├── 📁 memory/            # 🧠 记忆系统
 │   ├── store.js          # SQLite 存储
 │   ├── embedding.js      # 语义向量
 │   ├── identity.js       # QQ 身份账本与防冒充提示
 │   ├── group-learning.js # 客观观察/角色主观反思闭环
 │   └── scheduler.js      # 摘要与画像调度
-├── 📁 server/            # 🌐 HTTP 服务 + REST API
-│   ├── index.js
-│   └── api/
 ├── 📁 utils/             # 🛠️ 工具函数与本地工具
 │   ├── reply.js          # AI 自主分段与发送
 │   └── tools/            # AI 工具
 ├── index.js              # 🔌 插件入口
 ├── package.json          # 📦 依赖配置
-├── pnpm-lock.yaml        # 🔒 依赖锁文件
-└── pnpm-workspace.yaml   # pnpm 构建配置
+└── pnpm-lock.yaml        # 🔒 依赖锁文件
 ```
 
 · · ─────── ・✦・ ─────── · ·
@@ -372,7 +367,7 @@ http://localhost:3000
 ### 🍼 v0.1.0
 
 - 基于 lolicon-core 重构插件
-- 新增内置 Web 管理面板
+- Web 管理面板迁移至 lolicon-core，与插件业务代码分离
 - 新增本地工具热加载与上传
 - 新增 SQLite + Embedding 长期记忆
 - 新增 AI 自主分段回复与本地超长兜底

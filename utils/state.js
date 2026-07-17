@@ -2,7 +2,7 @@
  * loli-plugin 共享状态与生命周期
  *
  * 将原本散落在 index.js 中的全局状态、辅助函数和初始化逻辑抽取出来，
- * 供 apps/、utils/、server/ 等模块共享，同时避免与 Yunzai 插件入口产生循环依赖。
+ * 供 apps/、utils/ 等模块共享，同时避免与 Yunzai 插件入口产生循环依赖。
  */
 import path from 'path'
 import fs from 'fs'
@@ -22,7 +22,6 @@ export { PLUGIN_ROOT, DATA_DIR, TOOLS_DIR }
 
 let engine = null
 let config = null
-let server = null
 let pluginLogger = null
 
 // 运行日志缓冲区（供管理面板查看）
@@ -96,7 +95,7 @@ export const saveConfig = () => {
 
 export const getEngine = () => engine
 export const getConfig = () => config
-export const getDashboardServer = () => server
+export const getDashboardServer = () => engine?.getDashboardServer?.() || null
 export const getLogBuffer = () => logBuffer
 
 /**
@@ -158,17 +157,24 @@ export async function initPlugin () {
   // 启动管理面板
   if (config.dashboard?.enable !== false) {
     try {
-      const { startServer } = await import('../server/index.js')
-      const serverCtx = {
-        engine,
+      if (typeof engine.startDashboard !== 'function') {
+        throw new Error('当前 lolicon-core 不包含管理面板，请先更新 lolicon-core')
+      }
+      await engine.startDashboard({
         config,
         saveConfig,
-        dataDir: DATA_DIR,
         toolsDir: TOOLS_DIR,
         logs: logBuffer,
-        logger: (msg) => l.info(msg)
-      }
-      server = await startServer(serverCtx, config.dashboard?.port || 3000)
+        logger: (msg) => l.info(msg),
+        getBot: () => globalThis.Bot,
+        memory: {
+          getStats: async () => {
+            const { getStats } = await import('../memory/store.js')
+            const { resolveMemoryBaseDir } = await import('../memory/options.js')
+            return getStats(resolveMemoryBaseDir(config, PLUGIN_ROOT))
+          }
+        }
+      })
     } catch (err) {
       l.warn('[loli] 管理面板启动失败:', err.message)
     }
@@ -216,12 +222,6 @@ export async function destroyPlugin () {
     closeStickerStores()
   } catch (err) {
     pluginLogger?.warn('[loli] 记忆系统卸载失败:', err.message)
-  }
-  if (server) {
-    await new Promise(resolve => {
-      server.close(() => resolve())
-      server = null
-    })
   }
   if (engine) {
     await engine.destroy()
