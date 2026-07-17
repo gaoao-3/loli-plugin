@@ -38,6 +38,14 @@ export function openMemoryStore (baseDir) {
       group_id TEXT,
       user_id TEXT,
       nickname TEXT,
+      display_name TEXT,
+      card TEXT,
+      account_nickname TEXT,
+      sender_role TEXT,
+      sender_title TEXT,
+      is_master INTEGER NOT NULL DEFAULT 0,
+      appellation TEXT,
+      message_key TEXT,
       role TEXT NOT NULL,
       text TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -66,16 +74,6 @@ export function openMemoryStore (baseDir) {
       hash TEXT,
       updated_at INTEGER NOT NULL,
       UNIQUE(scope, target_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS archived_summaries (
-      scope TEXT NOT NULL,
-      target_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      summary TEXT NOT NULL,
-      hash TEXT,
-      archived_at INTEGER NOT NULL,
-      PRIMARY KEY(scope, target_id, date)
     );
 
     CREATE TABLE IF NOT EXISTS memory_chunks (
@@ -130,10 +128,62 @@ export function openMemoryStore (baseDir) {
       error TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS group_learning_state (
+      group_id TEXT PRIMARY KEY,
+      version INTEGER NOT NULL DEFAULT 0,
+      profile_json TEXT NOT NULL DEFAULT '[]',
+      memory_json TEXT NOT NULL DEFAULT '[]',
+      last_message_id INTEGER NOT NULL DEFAULT 0,
+      last_review_at INTEGER,
+      status TEXT NOT NULL DEFAULT 'idle',
+      error TEXT,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS group_learning_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      operations_json TEXT,
+      reason TEXT,
+      created_at INTEGER NOT NULL,
+      UNIQUE(group_id, version)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_learning_versions
+      ON group_learning_versions (group_id, version DESC);
+
+    CREATE TABLE IF NOT EXISTS group_identities (
+      group_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      display_name TEXT,
+      card TEXT,
+      nickname TEXT,
+      sender_role TEXT,
+      sender_title TEXT,
+      is_master INTEGER NOT NULL DEFAULT 0,
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      first_seen_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      seen_count INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY(group_id, user_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_group_identities_master
+      ON group_identities (group_id, is_master);
+
     CREATE TABLE IF NOT EXISTS schema_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+  `)
+  ensureMessageIdentityColumns(db)
+  db.exec('DROP TABLE IF EXISTS archived_summaries')
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_source
+      ON messages (scope, target_id, message_key)
+      WHERE message_key IS NOT NULL;
   `)
   migrateLegacyUserMessages(db)
   backfillChunks(db)
@@ -149,20 +199,47 @@ export function closeMemoryStore () {
 export function addMessage (baseDir, message) {
   const store = openMemoryStore(baseDir)
   const stmt = store.prepare(`
-    INSERT INTO messages (scope, target_id, group_id, user_id, nickname, role, text, created_at, date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO messages (
+      scope, target_id, group_id, user_id, nickname, display_name, card,
+      account_nickname, sender_role, sender_title, is_master, appellation, message_key,
+      role, text, created_at, date
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
-  stmt.run(
+  const result = stmt.run(
     message.scope,
     message.targetId,
     message.groupId || null,
     message.userId || null,
     message.nickname || null,
+    message.displayName || message.nickname || null,
+    message.card || null,
+    message.accountNickname || null,
+    message.senderRole || null,
+    message.senderTitle || null,
+    message.isMaster ? 1 : 0,
+    message.appellation || null,
+    message.messageKey || null,
     message.role,
     message.text,
     message.createdAt || Date.now(),
     message.date || today()
   )
+  return Number(result.changes)
+}
+
+export function getTargetIdentity (baseDir, scope, targetId) {
+  const row = openMemoryStore(baseDir).prepare(`
+    SELECT user_id AS userId, nickname, display_name AS displayName, card,
+      account_nickname AS accountNickname, sender_role AS senderRole,
+      sender_title AS senderTitle,
+      is_master AS isMaster, appellation
+    FROM messages
+    WHERE scope = ? AND target_id = ? AND role = 'user' AND user_id IS NOT NULL
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(scope, targetId)
+  return row ? { ...row, isMaster: Boolean(row.isMaster) } : null
 }
 
 export function getMessagesForDate (baseDir, scope, targetId, date = today()) {
@@ -406,15 +483,15 @@ export function pruneOldMessages (baseDir, maxDays) {
   return Number(openMemoryStore(baseDir).prepare('DELETE FROM messages WHERE date < ?').run(cutoffDate).changes)
 }
 
-export function archiveOldSummaries (baseDir, archiveDays) {
-  const days = Number(archiveDays)
+export function pruneOldSummaries (baseDir, retentionDays) {
+  const days = Number(retentionDays)
   if (!Number.isFinite(days) || days < 1) return 0
   const cutoff = new Date()
   cutoff.setHours(cutoff.getHours() + 8 - days * 24)
   const cutoffDate = cutoff.toISOString().slice(0, 10)
   const store = openMemoryStore(baseDir)
   const rows = store.prepare(`
-    SELECT s.scope, s.target_id AS targetId, s.date, s.summary, s.hash
+    SELECT s.scope, s.target_id AS targetId, s.date
     FROM summaries s
     JOIN profiles p ON p.scope = s.scope AND p.target_id = s.target_id
     WHERE s.date < ?
@@ -423,20 +500,12 @@ export function archiveOldSummaries (baseDir, archiveDays) {
 
   store.exec('BEGIN')
   try {
-    const archive = store.prepare(`
-      INSERT INTO archived_summaries (scope, target_id, date, summary, hash, archived_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(scope, target_id,date) DO UPDATE SET
-        summary = excluded.summary, hash = excluded.hash, archived_at = excluded.archived_at
-    `)
     const removeChunk = store.prepare(`
       DELETE FROM memory_chunks
       WHERE scope = ? AND target_id = ? AND source_type = 'summary' AND source_id = ?
     `)
     const removeSummary = store.prepare('DELETE FROM summaries WHERE scope = ? AND target_id = ? AND date = ?')
-    const now = Date.now()
     for (const row of rows) {
-      archive.run(row.scope, row.targetId, row.date, row.summary, row.hash || null, now)
       removeChunk.run(row.scope, row.targetId, row.date)
       removeSummary.run(row.scope, row.targetId, row.date)
     }
@@ -448,6 +517,212 @@ export function archiveOldSummaries (baseDir, archiveDays) {
   }
 }
 
+export function upsertGroupIdentity (baseDir, { groupId, identity, observedAt = Date.now() }) {
+  const gid = String(groupId || '')
+  const userId = String(identity?.userId || '')
+  if (!gid || !userId) return null
+  const store = openMemoryStore(baseDir)
+  const previous = getGroupIdentity(baseDir, gid, userId)
+  const displayName = normalizeIdentityText(identity.displayName)
+  const card = normalizeIdentityText(identity.card)
+  const nickname = normalizeIdentityText(identity.nickname)
+  const senderRole = normalizeIdentityText(identity.role || identity.senderRole, 24)
+  const senderTitle = normalizeIdentityText(identity.title || identity.senderTitle)
+  const aliases = mergeAliases(previous?.aliases || [], [displayName, card, nickname], observedAt)
+  const firstSeenAt = previous?.firstSeenAt || observedAt
+  const seenCount = (previous?.seenCount || 0) + 1
+  store.prepare(`
+    INSERT INTO group_identities (
+      group_id, user_id, display_name, card, nickname, sender_role, sender_title,
+      is_master, aliases_json, first_seen_at, last_seen_at, seen_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(group_id, user_id) DO UPDATE SET
+      display_name = excluded.display_name,
+      card = excluded.card,
+      nickname = excluded.nickname,
+      sender_role = excluded.sender_role,
+      sender_title = excluded.sender_title,
+      is_master = excluded.is_master,
+      aliases_json = excluded.aliases_json,
+      last_seen_at = excluded.last_seen_at,
+      seen_count = excluded.seen_count
+  `).run(
+    gid, userId, displayName || null, card || null, nickname || null,
+    senderRole || null, senderTitle || null,
+    identity.isMaster ? 1 : 0, JSON.stringify(aliases), firstSeenAt, observedAt, seenCount
+  )
+  return getGroupIdentity(baseDir, gid, userId)
+}
+
+export function getGroupIdentity (baseDir, groupId, userId) {
+  const row = openMemoryStore(baseDir).prepare(`
+    SELECT group_id AS groupId, user_id AS userId, display_name AS displayName,
+      card, nickname, sender_role AS senderRole, sender_title AS senderTitle,
+      is_master AS isMaster, aliases_json AS aliasesJson,
+      first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, seen_count AS seenCount
+    FROM group_identities WHERE group_id = ? AND user_id = ?
+  `).get(String(groupId), String(userId))
+  return row ? { ...row, isMaster: Boolean(row.isMaster), aliases: parseJsonArray(row.aliasesJson) } : null
+}
+
+export function listGroupIdentities (baseDir, groupId) {
+  return openMemoryStore(baseDir).prepare(`
+    SELECT group_id AS groupId, user_id AS userId, display_name AS displayName,
+      card, nickname, sender_role AS senderRole, sender_title AS senderTitle,
+      is_master AS isMaster, aliases_json AS aliasesJson,
+      first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, seen_count AS seenCount
+    FROM group_identities WHERE group_id = ?
+    ORDER BY last_seen_at DESC
+  `).all(String(groupId)).map(row => ({
+    ...row,
+    isMaster: Boolean(row.isMaster),
+    aliases: parseJsonArray(row.aliasesJson)
+  }))
+}
+
+export function getGroupLearningMessages (baseDir, groupId, {
+  afterId = 0,
+  since = 0,
+  limit = 240
+} = {}) {
+  return openMemoryStore(baseDir).prepare(`
+    SELECT id, userId, displayName, role, text, createdAt
+    FROM (
+      SELECT id, user_id AS userId, COALESCE(display_name, nickname, user_id) AS displayName,
+        role, text, created_at AS createdAt
+      FROM messages
+      WHERE scope = 'group' AND target_id = ? AND role IN ('user', 'assistant')
+        AND id > ? AND created_at >= ?
+      ORDER BY id DESC
+      LIMIT ?
+    ) recent
+    ORDER BY id ASC
+  `).all(String(groupId), Number(afterId) || 0, Number(since) || 0, Math.max(1, Number(limit) || 240))
+}
+
+export function getGroupLearningState (baseDir, groupId) {
+  const row = openMemoryStore(baseDir).prepare(`
+    SELECT group_id AS groupId, version, profile_json AS profileJson,
+      memory_json AS memoryJson, last_message_id AS lastMessageId,
+      last_review_at AS lastReviewAt, status, error, updated_at AS updatedAt
+    FROM group_learning_state WHERE group_id = ?
+  `).get(String(groupId))
+  if (!row) {
+    return {
+      groupId: String(groupId),
+      version: 0,
+      profile: [],
+      memory: [],
+      lastMessageId: 0,
+      lastReviewAt: null,
+      status: 'idle',
+      error: null,
+      updatedAt: null
+    }
+  }
+  return {
+    ...row,
+    profile: parseJsonArray(row.profileJson),
+    memory: parseJsonArray(row.memoryJson)
+  }
+}
+
+export function setGroupLearningReviewStatus (baseDir, groupId, status, error = null) {
+  const current = getGroupLearningState(baseDir, groupId)
+  openMemoryStore(baseDir).prepare(`
+    INSERT INTO group_learning_state (
+      group_id, version, profile_json, memory_json, last_message_id,
+      last_review_at, status, error, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(group_id) DO UPDATE SET
+      status = excluded.status,
+      error = excluded.error,
+      updated_at = excluded.updated_at
+  `).run(
+    String(groupId), current.version, JSON.stringify(current.profile), JSON.stringify(current.memory),
+    current.lastMessageId, current.lastReviewAt, status, error, Date.now()
+  )
+}
+
+export function saveGroupLearningReview (baseDir, {
+  groupId,
+  profile = [],
+  memory = [],
+  lastMessageId = 0,
+  operations = {},
+  reason = 'background_review',
+  changed = true
+}) {
+  const store = openMemoryStore(baseDir)
+  const current = getGroupLearningState(baseDir, groupId)
+  const version = changed ? current.version + 1 : current.version
+  const snapshot = { profile, memory }
+  const now = Date.now()
+  store.exec('BEGIN')
+  try {
+    store.prepare(`
+      INSERT INTO group_learning_state (
+        group_id, version, profile_json, memory_json, last_message_id,
+        last_review_at, status, error, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'idle', NULL, ?)
+      ON CONFLICT(group_id) DO UPDATE SET
+        version = excluded.version,
+        profile_json = excluded.profile_json,
+        memory_json = excluded.memory_json,
+        last_message_id = excluded.last_message_id,
+        last_review_at = excluded.last_review_at,
+        status = 'idle',
+        error = NULL,
+        updated_at = excluded.updated_at
+    `).run(
+      String(groupId), version, JSON.stringify(profile), JSON.stringify(memory),
+      Number(lastMessageId) || current.lastMessageId, now, now
+    )
+    if (changed) {
+      store.prepare(`
+        INSERT INTO group_learning_versions (
+          group_id, version, snapshot_json, operations_json, reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(String(groupId), version, JSON.stringify(snapshot), JSON.stringify(operations), reason, now)
+    }
+    store.exec('COMMIT')
+    return { version, changed }
+  } catch (err) {
+    store.exec('ROLLBACK')
+    throw err
+  }
+}
+
+export function listGroupLearningVersions (baseDir, groupId, limit = 10) {
+  return openMemoryStore(baseDir).prepare(`
+    SELECT version, reason, created_at AS createdAt
+    FROM group_learning_versions
+    WHERE group_id = ?
+    ORDER BY version DESC
+    LIMIT ?
+  `).all(String(groupId), Math.max(1, Number(limit) || 10))
+}
+
+export function rollbackGroupLearning (baseDir, groupId, targetVersion) {
+  const store = openMemoryStore(baseDir)
+  const row = store.prepare(`
+    SELECT snapshot_json AS snapshotJson
+    FROM group_learning_versions
+    WHERE group_id = ? AND version = ?
+  `).get(String(groupId), Number(targetVersion))
+  if (!row) return null
+  const snapshot = JSON.parse(row.snapshotJson)
+  return saveGroupLearningReview(baseDir, {
+    groupId,
+    profile: Array.isArray(snapshot.profile) ? snapshot.profile : [],
+    memory: Array.isArray(snapshot.memory) ? snapshot.memory : [],
+    lastMessageId: getGroupLearningState(baseDir, groupId).lastMessageId,
+    operations: { rollbackFrom: targetVersion },
+    reason: `rollback:${targetVersion}`,
+    changed: true
+  })
+}
+
 export function getStats (baseDir) {
   const store = openMemoryStore(baseDir)
   const messages = store.prepare('SELECT COUNT(*) AS count FROM messages').get().count
@@ -455,9 +730,51 @@ export function getStats (baseDir) {
   const profiles = store.prepare('SELECT COUNT(*) AS count FROM profiles').get().count
   const chunks = store.prepare('SELECT COUNT(*) AS count FROM memory_chunks').get().count
   const embeddings = store.prepare('SELECT COUNT(*) AS count FROM memory_embeddings').get().count
-  const archivedSummaries = store.prepare('SELECT COUNT(*) AS count FROM archived_summaries').get().count
+  const identities = store.prepare('SELECT COUNT(*) AS count FROM group_identities').get().count
+  const learnedGroups = store.prepare('SELECT COUNT(*) AS count FROM group_learning_state WHERE version > 0').get().count
+  const learningVersions = store.prepare('SELECT COUNT(*) AS count FROM group_learning_versions').get().count
   const runs = getSchedulerRuns(baseDir)
-  return { enabled: true, messages, summaries, archivedSummaries, profiles, chunks, embeddings, runs, dbPath }
+  return { enabled: true, messages, summaries, profiles, chunks, embeddings, identities, learnedGroups, learningVersions, runs, dbPath }
+}
+
+function parseJsonArray (value) {
+  try {
+    const parsed = JSON.parse(value || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function mergeAliases (current, names, observedAt) {
+  const aliases = Array.isArray(current) ? current.map(item => ({ ...item })) : []
+  for (const rawName of names) {
+    const name = normalizeIdentityText(rawName)
+    if (!name || name === '-') continue
+    const found = aliases.find(item => normalizeAlias(item.name) === normalizeAlias(name))
+    if (found) {
+      found.name = name
+      found.lastSeenAt = observedAt
+      found.count = (Number(found.count) || 0) + 1
+    } else {
+      aliases.push({ name, firstSeenAt: observedAt, lastSeenAt: observedAt, count: 1 })
+    }
+  }
+  return aliases
+    .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+    .slice(0, 20)
+}
+
+function normalizeAlias (value) {
+  return String(value || '').trim().toLocaleLowerCase('zh-CN')
+}
+
+function normalizeIdentityText (value, maxLength = 80) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
 }
 
 function simpleHash (s) {
@@ -527,4 +844,26 @@ function migrateLegacyUserMessages (store) {
     store.exec('ROLLBACK')
     throw err
   }
+}
+
+function ensureMessageIdentityColumns (store) {
+  const existing = new Set(store.prepare('PRAGMA table_info(messages)').all().map(row => row.name))
+  const columns = {
+    display_name: 'TEXT',
+    card: 'TEXT',
+    account_nickname: 'TEXT',
+    sender_role: 'TEXT',
+    sender_title: 'TEXT',
+    is_master: 'INTEGER NOT NULL DEFAULT 0',
+    appellation: 'TEXT',
+    message_key: 'TEXT'
+  }
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!existing.has(name)) store.exec(`ALTER TABLE messages ADD COLUMN ${name} ${definition}`)
+  }
+  store.exec(`
+    UPDATE messages
+    SET display_name = COALESCE(display_name, nickname)
+    WHERE display_name IS NULL
+  `)
 }

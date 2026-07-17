@@ -2,7 +2,8 @@
  * 记忆检索器 — 从 SQLite 读取摘要和画像
  */
 import { searchRelevantChunks } from './embedding.js'
-import { getProfile, getRecentSummaries, getSummary, today } from './store.js'
+import { getProfile, getRecentSummaries, getSummary, getTargetIdentity, today } from './store.js'
+import { applyMasterIdentityConfig } from '../utils/identity.js'
 
 /**
  * 检索相关记忆
@@ -39,6 +40,11 @@ export async function retrieveMemories ({ baseDir, groupId, userId, queryText = 
   if (userEnabled) {
     const userScope = groupId ? 'group_user' : 'private_user'
     const userTargetId = groupId ? `${groupId}:${userId}` : String(userId)
+    result.userIdentity = applyMasterIdentityConfig(
+      getTargetIdentity(baseDir, userScope, userTargetId),
+      userId,
+      config
+    )
     const profile = getProfile(baseDir, userScope, userTargetId)
     if (profile?.profile) result.userImpression = profile.profile
 
@@ -60,6 +66,7 @@ export async function retrieveMemories ({ baseDir, groupId, userId, queryText = 
         userId: userEnabled ? userId : null,
         queryText
       })
+      result.relevant = deduplicateRelevantMemories(result.relevant, result)
     } catch (err) {
       console.warn(`[Memory] 语义检索失败: ${String(err?.message || err).slice(0, 200)}`)
       result.relevant = []
@@ -67,4 +74,25 @@ export async function retrieveMemories ({ baseDir, groupId, userId, queryText = 
   }
 
   return result
+}
+
+/** 避免长期画像/今日摘要既作为固定上下文注入，又被向量检索重复召回。 */
+export function deduplicateRelevantMemories (items, direct = {}) {
+  const directTexts = new Set([
+    direct.userImpression,
+    direct.todayUser,
+    direct.groupImpression,
+    direct.todayGroup
+  ].map(normalizeMemoryText).filter(Boolean))
+  const seen = new Set()
+  return (Array.isArray(items) ? items : []).filter(item => {
+    const text = normalizeMemoryText(item?.text)
+    if (!text || directTexts.has(text) || seen.has(text)) return false
+    seen.add(text)
+    return true
+  })
+}
+
+function normalizeMemoryText (value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
 }

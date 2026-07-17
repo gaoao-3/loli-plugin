@@ -1,6 +1,7 @@
-import { getEngine } from './state.js'
+import { getConfig, getEngine } from './state.js'
 import { getGroupHistory } from './group.js'
 import { getSelfId, makeForwardMsg, makeImageSegment, makeRecordSegment, normalizeSegment } from './bot.js'
+import { formatIdentityPrompt, resolveDetailedEventIdentity } from './identity.js'
 import {
   formatOneBotSegmentText,
   formatRawMessage,
@@ -280,11 +281,12 @@ export async function intoUserMessage (e, options = {}) {
       switch (val.type) {
         case 'at': {
           if (handleAtMsg) {
-            const { qq, text: atCard } = val
+            const qq = val.qq || val.user_id
+            const atCard = val.text || val.name
             if ((toggleMode === 'at' || excludeAtBot) && String(qq) === getSelfId(e)) {
               break
             }
-            text += ` @${atCard || qq} `
+            text += ` @${atCard || qq}(QQ:${qq || '未知'}) `
           }
           break
         }
@@ -325,19 +327,11 @@ export async function intoUserMessage (e, options = {}) {
     const regex = new RegExp(`^#?(图片)?${escaped}\\s*`)
     text = text.replace(regex, '').trimStart()
   }
-  if (text) {
-    // 群聊消息标注发送者，让 AI 知道在跟谁说话
-    if (e.isGroup && e.sender) {
-      const senderName = e.sender.card || e.sender.nickname || e.sender.user_id || ''
-      if (senderName) {
-        text = `[发送者: ${senderName}]\n${text}`
-      }
-    }
-    contents.push({
-      type: 'text',
-      text
-    })
-  }
+  const identity = await resolveDetailedEventIdentity(e, getConfig())
+  contents.push({
+    type: 'text',
+    text: `${formatIdentityPrompt(identity)}${text ? `\n${text}` : ''}`
+  })
   return {
     role: 'user',
     content: contents

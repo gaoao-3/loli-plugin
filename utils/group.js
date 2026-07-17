@@ -1,6 +1,7 @@
 import { getBotFramework, getEventBot, getEventGroup, getGroupId, normalizeSegment } from './bot.js'
 import { getConfig } from './state.js'
 import { formatOneBotSegmentText, formatRawMessage, formatTimeToBeiJing, renderTemplate } from './common.js'
+import { resolveSenderIdentity } from './identity.js'
 
 /**
  * @typedef {Object} GroupHistoryOptions
@@ -271,17 +272,34 @@ export function buildGroupContextPrompt (e, chats, templates = {}) {
   const rows = sortHistoryChronologically(chats)
     .map(chat => {
       const sender = normalizeHistorySender(chat)
+      const identity = resolveSenderIdentity(sender, { config: getConfig(), inGroup: true })
       const raw = getHistoryMessageText(chat)
       if (!raw) return ''
       const senderName = sender.card || sender.nickname || sender.user_id || '-'
       const isAdmin = ['owner', 'admin'].includes(sender.role) ? '是' : '否'
+      const identityName = identity.isMaster
+        ? `机器人主人 / ${identity.roleName}${identity.appellation ? `（称呼：${identity.appellation}）` : ''}`
+        : identity.roleName
+      const missingIdentityFields = [
+        !groupContextTemplateMessage.includes('${message.sender.user_id}') && `QQ:${identity.userId || '-'}`,
+        !groupContextTemplateMessage.includes('${message.sender.identity}') && `身份:${identityName}`,
+        !groupContextTemplateMessage.includes('${message.sender.card}') && `群名片:${identity.card || '-'}`,
+        !groupContextTemplateMessage.includes('${message.sender.nickname}') && `昵称:${identity.nickname || '-'}`,
+        !groupContextTemplateMessage.includes('${message.sender.title}') && `头衔:${identity.title || '-'}`
+      ].filter(Boolean)
+      const contextualSenderName = missingIdentityFields.length
+        ? `${senderName} [${missingIdentityFields.join(' | ')}]`
+        : senderName
       return renderTemplate(groupContextTemplateMessage, {
         '${message.sender.card}': sender.card || '-',
         '${message.sender.nickname}': sender.nickname || '-',
         '${message.sender.user_id}': String(sender.user_id || '-'),
         '${message.sender.role}': sender.role || '-',
         '${message.sender.title}': sender.title || '-',
-        '${message.sender.name}': senderName,
+        '${message.sender.name}': contextualSenderName,
+        '${message.sender.identity}': identityName,
+        '${message.sender.is_master}': identity.isMaster ? '是' : '否',
+        '${message.sender.appellation}': identity.appellation || '-',
         '${message.sender.is_admin}': isAdmin,
         '${message.sender.level}': sender.level || '-',
         '${message.sender.age}': sender.age || '-',
@@ -365,6 +383,9 @@ function getHistoryMessageText (chat) {
 
 function segmentToContextText (segment) {
   if (segment.type === 'text') return segment.text || ''
-  if (segment.type === 'at') return `@${segment.text || segment.qq || '未知用户'}`
+  if (segment.type === 'at') {
+    const qq = segment.qq || segment.user_id || '未知QQ'
+    return `@${segment.text || qq}(QQ:${qq})`
+  }
   return formatOneBotSegmentText(segment, { includeReply: false })
 }

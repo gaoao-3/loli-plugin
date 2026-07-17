@@ -6,9 +6,11 @@
  */
 import path from 'path'
 import fs from 'fs'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { createEngine } from 'lolicon-core'
 import defaultConfig from '../config/config.js'
+import { getMemoryDataDir } from '../memory/options.js'
+import { mergeDetectedMasterIdentities } from './identity.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const PLUGIN_ROOT = path.dirname(path.dirname(__filename))
@@ -108,6 +110,7 @@ export async function initPlugin () {
   }
 
   loadConfig()
+  await syncHostMasterIdentities()
   pluginLogger = wrapLogger()
   const l = pluginLogger
 
@@ -131,12 +134,21 @@ export async function initPlugin () {
     await engine.savePreset(p)
   }
 
+  // 重启后补处理已入库但尚未完成视觉标签的图片表情。
+  try {
+    const { listStickers } = await import('./stickers.js')
+    const { enqueueStickerClassifications } = await import('./sticker-classifier.js')
+    const pending = listStickers({ enabled: true, limit: 200 })
+    enqueueStickerClassifications({ engine, config, stickers: pending, logger: l })
+  } catch (err) {
+    l.warn(`[Sticker] 启动视觉识别补偿失败: ${err.message}`)
+  }
+
   // 启动记忆调度器
   try {
     const { startScheduler } = await import('../memory/scheduler.js')
     startScheduler({
-      dataDir: config.memory?.dailyMd?.dataDir || path.join(DATA_DIR, 'memory/md'),
-      archiveDays: config.memory?.archive?.archiveDays || 30,
+      dataDir: getMemoryDataDir(config, path.join(DATA_DIR, 'memory/md')),
       logger: l
     })
   } catch (err) {
@@ -165,6 +177,32 @@ export async function initPlugin () {
   l.info(`[loli] 日奈启动了 (v${config.version || '0.1.0'})`)
 }
 
+async function syncHostMasterIdentities () {
+  const master = config?.loli?.masterIdentity
+  if (master?.enable === false || master?.autoDetect === false) return
+  try {
+    const hostConfigUrl = pathToFileURL(path.resolve(PLUGIN_ROOT, '..', '..', 'lib', 'config', 'config.js')).href
+    const hostConfig = (await import(hostConfigUrl)).default
+    const ids = Array.isArray(hostConfig?.masterQQ) ? hostConfig.masterQQ : []
+    const detected = ids.map(userId => ({ userId, nickname: findBotNickname(userId) }))
+    if (mergeDetectedMasterIdentities(config, detected)) saveConfig()
+  } catch (err) {
+    pluginLogger?.debug?.(`[loli] 自动读取宿主主人列表失败: ${err.message}`)
+  }
+}
+
+function findBotNickname (userId) {
+  const id = String(userId || '')
+  const botRoot = globalThis.Bot
+  const candidates = [botRoot, ...Object.values(botRoot || {})].filter(Boolean)
+  for (const bot of candidates) {
+    const friend = bot?.fl?.get?.(Number(id)) || bot?.fl?.get?.(id)
+    const nickname = friend?.nickname || friend?.nick || friend?.remark
+    if (nickname) return String(nickname)
+  }
+  return ''
+}
+
 /**
  * 插件卸载
  */
@@ -172,8 +210,10 @@ export async function destroyPlugin () {
   try {
     const { stopScheduler } = await import('../memory/scheduler.js')
     const { closeMemoryStore } = await import('../memory/store.js')
+    const { closeStickerStores } = await import('./stickers.js')
     stopScheduler()
     closeMemoryStore()
+    closeStickerStores()
   } catch (err) {
     pluginLogger?.warn('[loli] 记忆系统卸载失败:', err.message)
   }

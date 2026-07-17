@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  lolicon-core@0.2.0:
+    hash: e9d3785ea9ef71f08912b40c136fa5ea419c7e4c921c0b6a33e27b4d7f33d62f
+    path: patches/lolicon-core@0.2.0.patch
+
 importers:
 
   .:
@@ -25,7 +30,7 @@ importers:
         version: 0.18.13
       lolicon-core:
         specifier: github:gaoao-3/lolicon-core
-        version: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(ws@8.21.0)(zod@3.25.76)
+        version: https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(patch_hash=e9d3785ea9ef71f08912b40c136fa5ea419c7e4c921c0b6a33e27b4d7f33d62f)(ws@8.21.0)(zod@3.25.76)
 
 packages:
 
@@ -1609,7 +1614,7 @@ snapshots:
       htmlparser2: 10.1.0
       uhyphen: 0.2.0
 
-  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(ws@8.21.0)(zod@3.25.76):
+  lolicon-core@https://codeload.github.com/gaoao-3/lolicon-core/tar.gz/5882c1259e76cd4cc5ff83a55fdd078b26c6d915(patch_hash=e9d3785ea9ef71f08912b40c136fa5ea419c7e4c921c0b6a33e27b4d7f33d62f)(ws@8.21.0)(zod@3.25.76):
     dependencies:
       '@google/genai': 1.52.0
       chokidar: 4.0.3

@@ -13,12 +13,30 @@ export default {
         options: {
           apiKey: 'YOUR_GEMINI_API_KEY',
           baseUrl: '',
+          /** Gemini 可调安全过滤：default / off / permissive / balanced / strict */
+          safetyLevel: 'default',
           /** 是否把模型 API 响应写入运行日志 */
           logApiResponses: true,
           /** 单条响应日志最大字符数 */
           apiResponseLogMaxLength: 4000
         },
         status: 'enabled'
+      },
+      {
+        id: 'antigravity',
+        name: 'Antigravity Tools',
+        adapterType: 'gemini',
+        models: [],
+        options: {
+          providerType: 'antigravity',
+          protocol: 'gemini',
+          apiKey: '',
+          baseUrl: 'http://127.0.0.1:8045',
+          safetyLevel: 'default',
+          logApiResponses: true,
+          apiResponseLogMaxLength: 4000
+        },
+        status: 'disabled'
       }
     ],
     presets: [
@@ -81,6 +99,19 @@ export default {
       enable: true,
       detectImpersonation: true
     },
+    /** @type {Object} 主人身份与称呼（事件 e.isMaster 仍会自动识别） */
+    masterIdentity: {
+      /** 是否启用主人身份识别与特别称呼 */
+      enable: true,
+      /** 自动读取宿主主人列表，并在主人发言时记录 QQ 昵称 */
+      autoDetect: true,
+      /** @type {string[]} 已识别或兼容旧配置的主人 QQ */
+      userIds: [],
+      /** @type {{userId: string, nickname: string}[]} 自动识别到的主人信息 */
+      users: [],
+      /** @type {string} AI 对主人的特别称呼，留空则使用昵称或沿用预设人设 */
+      appellation: ''
+    },
     // ── 会话与冷却 ──────────────────────────
     /** @type {number} 会话复用窗口 (毫秒)，同一用户在此时间内共享对话上下文 */
     sessionWindow: 300000,
@@ -137,21 +168,45 @@ export default {
     group: { enable: true, enabledGroups: [], extractionModel: 'gemini-2.5-flash', channelId: 'gemini' },
     /** @type {{ enable: boolean, extractionModel: string, channelId: string }} */
     user: { enable: true, extractionModel: 'gemini-2.5-flash', channelId: 'gemini' },
+    /** @type {Object} Hermes 风格的客观群文化与角色主观记忆自学习 */
+    groupLearning: {
+      enable: true,
+      /** 主观记忆使用的角色预设；留空使用 loli.defaultPreset */
+      perspectivePresetId: '',
+      /** 首次形成群风格所需的有效消息数 */
+      minMessages: 100,
+      /** 已有设定后，每新增多少条有效消息复审一次 */
+      updateEveryMessages: 50,
+      /** 至少需要多少个不同成员共同参与 */
+      minActiveUsers: 5,
+      /** 仅分析最近多少天的新增消息 */
+      windowDays: 14,
+      /** 单次后台审查最多读取的消息数 */
+      reviewMaxMessages: 300,
+      /** 防止单个话痨主导群风格 */
+      maxSamplesPerUser: 30,
+      /** 群体风格结论至少需多少名成员提供证据 */
+      minEvidenceUsers: 3,
+      /** 自动采纳与提示词注入的最低置信度 */
+      autoApplyMinConfidence: 0.72,
+      injectMinConfidence: 0.7,
+      /** 两类常驻记忆各自的容量边界 */
+      groupProfileCharLimit: 1500,
+      groupMemoryCharLimit: 1500,
+      maxEntriesPerStore: 12,
+      /** 后台请求失败后的重试冷却 */
+      retryCooldownMs: 300000
+    },
     /** @type {string} */
     refinementModel: 'gemini-2.5-flash',
     /** @type {string} */
     refinementChannelId: 'gemini',
-    /** @type {Object} 每日记忆 */
-    dailyMd: {
-      dataDir: 'data/memory/md',
-      maxDays: 30
-    },
-    /** @type {Object} 记忆归档 */
-    archive: {
-      enable: true,
-      archiveDays: 30,
-      compressWithAI: false
-    },
+    /** @type {string} SQLite 记忆目录 */
+    dataDir: 'data/memory/md',
+    /** @type {number} 原始消息保留天数 */
+    messageRetentionDays: 30,
+    /** @type {number} 摘要保留天数；长期事实由画像承接 */
+    summaryRetentionDays: 30,
     /** @type {Object} 语义检索 */
     embedding: {
       enable: true,
@@ -163,6 +218,25 @@ export default {
       minScore: 0.2,
       batchSize: 8
     }
+  },
+
+  /** QQ 收藏表情与 AI 自主表情工具 */
+  stickers: {
+    enable: true,
+    /** 自动收录主人直接发送的小黄脸、超级表情和收藏表情 */
+    autoCollectMaster: true,
+    /** 动画/图片表情入库后由当前视觉模型异步生成情绪和场景标签 */
+    autoClassify: true,
+    /** 留空时沿用默认角色的渠道与模型 */
+    classificationPresetId: '',
+    classificationChannelId: '',
+    classificationModel: '',
+    /** 每轮向模型开放表情选择的概率；模型一旦输出合法标记就不再二次随机丢弃 */
+    probability: 0.35,
+    /** 使用 ICQQ 原生超级表情协议；部分环境可能返回成功但客户端不落消息 */
+    nativeSuperface: true,
+    /** 同一会话自动发送表情的最短间隔 */
+    cooldownMs: 60000
   },
 
   /** @type {Object} 群聊上下文模板（getGroupContextPrompt 使用） */
@@ -181,10 +255,13 @@ export default {
      *   ${message.sender.user_id}    QQ号
      *   ${message.sender.role}       角色 owner/admin/member
      *   ${message.sender.title}      头衔
+     *   ${message.sender.identity}   机器人主人/群主/管理员/群成员
+     *   ${message.sender.is_master}  是否为机器人主人
+     *   ${message.sender.appellation} 对主人的称呼
      *   ${message.messageId}         消息ID
      *   ${message.raw_message}       原始文本（CQ码已转 [图片]/[表情] 等可读标记）
      */
-    groupContextTemplateMessage: '[${message.time}] ${message.sender.name}(${message.sender.role}): ${message.raw_message}',
+    groupContextTemplateMessage: '[${message.time}] ${message.sender.name} [QQ:${message.sender.user_id} | 身份:${message.sender.identity} | 群名片:${message.sender.card} | 昵称:${message.sender.nickname} | 头衔:${message.sender.title}]: ${message.raw_message}',
     /** 上下文尾部模板 */
     groupContextTemplateSuffix: '── 群聊历史结束；请结合背景回复当前用户消息 ──'
   },

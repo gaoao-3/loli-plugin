@@ -4,6 +4,8 @@
  */
 
 const API_BASE = '/api';
+const ANTIGRAVITY_GEMINI_BASE_URL = 'http://127.0.0.1:8045';
+const ANTIGRAVITY_OPENAI_BASE_URL = 'http://127.0.0.1:8045/v1';
 
 const state = {
   currentPage: 'overview',
@@ -68,7 +70,11 @@ async function api(path, options = {}) {
     
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(text || `HTTP ${res.status}`);
+      let message = text;
+      try {
+        message = JSON.parse(text)?.error || text;
+      } catch {}
+      throw new Error(message || `HTTP ${res.status}`);
     }
     
     if (res.status === 204) return null;
@@ -95,9 +101,10 @@ function showToast(message, type = 'success') {
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `
-    <span class="toast-text">${message}</span>
-  `;
+  const toastText = document.createElement('span');
+  toastText.className = 'toast-text';
+  toastText.textContent = message;
+  toast.appendChild(toastText);
   container.appendChild(toast);
 
   // Trigger browser reflow for entry slide animation
@@ -261,7 +268,7 @@ async function syncOverview() {
     const items = [
       { key: '系统真实内存', val: system.memoryUsage || '未知' },
       { key: '机器人进程内存', val: system.processMemory?.rssFormatted || '未知' },
-      { key: '当前适配器渠道', val: channels.map(c => `${c.name} (${c.adapterType})`).join(', ') || '暂无绑定的渠道' },
+      { key: '当前适配器渠道', val: channels.map(c => `${c.name} (${formatChannelAdapter(c)})`).join(', ') || '暂无绑定的渠道' },
       { key: '当前活跃会话', val: system.activeSessions || '0' },
       { key: 'Bot 主体账号', val: system.botInfo || '未绑定' },
       { key: '系统指令配置', val: system.systemPromptCount ? `${system.systemPromptCount} 条设定` : '无' }
@@ -282,6 +289,31 @@ async function syncOverview() {
 }
 
 // --- Tab 2: Channels ---
+function renderChannelModels(models = []) {
+  const normalized = [...new Set(
+    (Array.isArray(models) ? models : [])
+      .map(model => String(model).trim())
+      .filter(Boolean)
+  )];
+
+  if (normalized.length === 0) {
+    return '<span class="channel-model-empty">未配置</span>';
+  }
+
+  const preview = normalized.slice(0, 2);
+  const remaining = normalized.length - preview.length;
+
+  return `
+    <div class="channel-model-summary" aria-label="共 ${normalized.length} 个模型">
+      <div class="channel-model-tags">
+        ${preview.map(model => `<span class="channel-model-tag" title="${escapeHtml(model)}">${escapeHtml(model)}</span>`).join('')}
+        ${remaining > 0 ? `<span class="channel-model-more">+${remaining}</span>` : ''}
+      </div>
+      <span class="channel-model-count">共 ${normalized.length} 个</span>
+    </div>
+  `;
+}
+
 async function syncChannels() {
   try {
     showLoading(true);
@@ -305,10 +337,13 @@ async function syncChannels() {
           </div>
         </td>
         <td>
-          <span class="font-mono text-xs uppercase bg-[#2c2e35] px-1.5 py-0.5 rounded text-[#cbd5e1] border border-[#2c2e35]">${escapeHtml(ch.adapterType)}</span>
+          <div class="flex-column gap-1 items-start">
+            <span class="font-mono text-xs uppercase bg-[#2c2e35] px-1.5 py-0.5 rounded text-[#cbd5e1] border border-[#2c2e35]">${escapeHtml(formatChannelAdapter(ch))}</span>
+            ${ch.adapterType === 'gemini' ? `<span class="text-[10px] text-[#8e9099]">安全：${escapeHtml(formatGeminiSafetyLevel(ch.options?.safetyLevel))}</span>` : ''}
+          </div>
         </td>
         <td>
-          <span class="font-mono text-xs text-slate-300 truncate max-w-[200px] block" title="${escapeHtml((ch.models || []).join(', '))}">${escapeHtml((ch.models || []).join(', ') || '-')}</span>
+          ${renderChannelModels(ch.models)}
         </td>
         <td>
           <span class="badge ${ch.status === 'enabled' ? 'badge-success' : 'badge-gray'}">${ch.status === 'enabled' ? '已启用' : '已禁用'}</span>
@@ -357,6 +392,9 @@ function handleOpenChannelAdd() {
   document.getElementById('channel-form-models').value = 'gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash-thinking-exp';
   document.getElementById('channel-form-apikey').value = '';
   document.getElementById('channel-form-baseurl').value = '';
+  document.getElementById('channel-form-antigravity-protocol').value = 'gemini';
+  document.getElementById('channel-form-gemini-safety').value = 'default';
+  syncChannelSafetyVisibility();
   
   document.getElementById('channelModal').classList.remove('hidden');
 }
@@ -371,10 +409,13 @@ function handleOpenChannelEdit(id) {
   document.getElementById('channel-form-id').value = ch.id;
   document.getElementById('channel-form-id').disabled = true;
   document.getElementById('channel-form-name').value = ch.name || '';
-  document.getElementById('channel-form-adapter').value = ch.adapterType || 'gemini';
+  document.getElementById('channel-form-adapter').value = getChannelAdapter(ch);
+  document.getElementById('channel-form-antigravity-protocol').value = getAntigravityProtocol(ch);
   document.getElementById('channel-form-models').value = (ch.models || []).join(', ');
-  document.getElementById('channel-form-apikey').value = ch.apiKey || '';
-  document.getElementById('channel-form-baseurl').value = ch.baseUrl || '';
+  document.getElementById('channel-form-apikey').value = ch.options?.apiKey || ch.apiKey || '';
+  document.getElementById('channel-form-baseurl').value = ch.options?.baseUrl || ch.baseUrl || '';
+  document.getElementById('channel-form-gemini-safety').value = normalizeGeminiSafetyLevel(ch.options?.safetyLevel || ch.safetyLevel);
+  syncChannelSafetyVisibility();
 
   document.getElementById('channelModal').classList.remove('hidden');
 }
@@ -390,6 +431,8 @@ async function saveChannelForm() {
   const modelsInput = document.getElementById('channel-form-models').value;
   const apiKey = document.getElementById('channel-form-apikey').value.trim();
   const baseUrl = document.getElementById('channel-form-baseurl').value.trim();
+  const antigravityProtocol = document.getElementById('channel-form-antigravity-protocol').value;
+  const safetyLevel = normalizeGeminiSafetyLevel(document.getElementById('channel-form-gemini-safety').value);
 
   if (!id || !name) {
     showToast('请输入渠道 ID 和名称', 'warning');
@@ -397,14 +440,30 @@ async function saveChannelForm() {
   }
 
   const models = modelsInput.split(',').map(s => s.trim()).filter(Boolean);
+  const existing = state.selectedChannelId ? state.channels.find(c => c.id === state.selectedChannelId) : null;
+  const options = {
+    ...(existing?.options || {}),
+    apiKey,
+    // 空字符串表示恢复 Gemini 官方端点，不能省略，否则服务端会保留旧中转地址。
+    baseUrl
+  };
+  const usesGeminiProtocol = adapterType === 'gemini' || (adapterType === 'antigravity' && antigravityProtocol === 'gemini');
+  if (usesGeminiProtocol) options.safetyLevel = safetyLevel;
+  else delete options.safetyLevel;
+  if (adapterType === 'antigravity') {
+    options.providerType = 'antigravity';
+    options.protocol = antigravityProtocol;
+  } else {
+    delete options.providerType;
+    delete options.protocol;
+  }
   const payload = {
     id,
     name,
     adapterType,
     models,
-    apiKey,
-    baseUrl: baseUrl || undefined,
-    status: state.selectedChannelId ? state.channels.find(c => c.id === state.selectedChannelId)?.status : 'enabled'
+    options,
+    status: existing?.status || 'enabled'
   };
 
   try {
@@ -423,6 +482,104 @@ async function saveChannelForm() {
     showLoading(false);
   }
 }
+
+async function fetchChannelModels() {
+  const adapterType = document.getElementById('channel-form-adapter').value;
+  const apiKey = document.getElementById('channel-form-apikey').value.trim();
+  const baseUrl = document.getElementById('channel-form-baseurl').value.trim();
+  const protocol = document.getElementById('channel-form-antigravity-protocol').value;
+  const button = document.getElementById('channel-fetch-models');
+  const originalText = button.textContent;
+
+  try {
+    button.disabled = true;
+    button.textContent = '获取中…';
+    const result = await post('/channels/models/discover', {
+      adapterType,
+      options: { apiKey, baseUrl, ...(adapterType === 'antigravity' ? { protocol } : {}) }
+    });
+    const models = Array.isArray(result?.models) ? result.models : [];
+    document.getElementById('channel-form-models').value = models.join(', ');
+    showToast(`已获取 ${models.length} 个模型`);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function normalizeGeminiSafetyLevel(value) {
+  const level = String(value || 'default').toLowerCase();
+  return ['default', 'off', 'permissive', 'balanced', 'strict'].includes(level) ? level : 'default';
+}
+
+function formatGeminiSafetyLevel(value) {
+  return ({
+    default: '模型默认',
+    off: '关闭附加过滤',
+    permissive: '宽松',
+    balanced: '均衡',
+    strict: '严格'
+  })[normalizeGeminiSafetyLevel(value)];
+}
+
+function getChannelAdapter(channel) {
+  return channel?.options?.providerType === 'antigravity' ? 'antigravity' : (channel?.adapterType || 'gemini');
+}
+
+function formatChannelAdapter(channel) {
+  return getChannelAdapter(channel) === 'antigravity'
+    ? `Antigravity · ${getAntigravityProtocol(channel) === 'gemini' ? 'Gemini' : 'OpenAI'}`
+    : getChannelAdapter(channel);
+}
+
+function getAntigravityProtocol(channel) {
+  if (channel?.options?.protocol === 'gemini' || channel?.options?.protocol === 'openai') return channel.options.protocol;
+  return channel?.adapterType === 'gemini' ? 'gemini' : 'openai';
+}
+
+function syncChannelSafetyVisibility() {
+  const adapterType = document.getElementById('channel-form-adapter').value;
+  const protocol = document.getElementById('channel-form-antigravity-protocol').value;
+  const isAntigravity = adapterType === 'antigravity';
+  const isGemini = adapterType === 'gemini' || (isAntigravity && protocol === 'gemini');
+  document.getElementById('channel-form-gemini-safety-wrap').classList.toggle('hidden', !isGemini);
+  document.getElementById('channel-form-antigravity-protocol-wrap').classList.toggle('hidden', !isAntigravity);
+  const hint = document.getElementById('channel-form-antigravity-hint');
+  hint.classList.toggle('hidden', !isAntigravity);
+  hint.textContent = protocol === 'gemini'
+    ? 'Gemini 原生：127.0.0.1:8045；模型列表读取 /v1beta/models。'
+    : 'OpenAI 兼容：127.0.0.1:8045/v1；模型列表读取 /v1/models。';
+}
+
+function syncAntigravityBaseUrl() {
+  const protocol = document.getElementById('channel-form-antigravity-protocol').value;
+  const baseUrl = document.getElementById('channel-form-baseurl');
+  const knownDefaults = ['', ANTIGRAVITY_GEMINI_BASE_URL, ANTIGRAVITY_OPENAI_BASE_URL];
+  if (knownDefaults.includes(baseUrl.value.trim())) {
+    baseUrl.value = protocol === 'gemini' ? ANTIGRAVITY_GEMINI_BASE_URL : ANTIGRAVITY_OPENAI_BASE_URL;
+  }
+  syncChannelSafetyVisibility();
+}
+
+function handleChannelAdapterChange() {
+  const adapterType = document.getElementById('channel-form-adapter').value;
+  if (adapterType === 'antigravity') {
+    const baseUrl = document.getElementById('channel-form-baseurl');
+    const id = document.getElementById('channel-form-id');
+    const name = document.getElementById('channel-form-name');
+    document.getElementById('channel-form-antigravity-protocol').value = 'gemini';
+    if (!baseUrl.value.trim()) baseUrl.value = ANTIGRAVITY_GEMINI_BASE_URL;
+    if (!state.selectedChannelId && !id.value.trim()) id.value = 'antigravity';
+    if (!state.selectedChannelId && !name.value.trim()) name.value = 'Antigravity Tools';
+    if (!state.selectedChannelId) document.getElementById('channel-form-models').value = '';
+  }
+  syncChannelSafetyVisibility();
+}
+
+document.getElementById('channel-form-adapter')?.addEventListener('change', handleChannelAdapterChange);
+document.getElementById('channel-form-antigravity-protocol')?.addEventListener('change', syncAntigravityBaseUrl);
 
 // --- Tab 3: Presets ---
 async function syncPresets() {
@@ -770,8 +927,8 @@ async function syncMemory() {
     state.memory = memory;
 
     document.getElementById('mem-messages').textContent = memory.messages || 0;
-    document.getElementById('mem-total-dims').textContent = (memory.summaries || 0) + (memory.profiles || 0);
-    document.getElementById('mem-dims-subtitle').textContent = `包含 ${memory.summaries || 0} 条群摘要 & ${memory.profiles || 0} 个用户特征`;
+    document.getElementById('mem-total-dims').textContent = (memory.summaries || 0) + (memory.profiles || 0) + (memory.identities || 0);
+    document.getElementById('mem-dims-subtitle').textContent = `包含 ${memory.summaries || 0} 条摘要、${memory.profiles || 0} 个画像与 ${memory.identities || 0} 个身份`;
     document.getElementById('mem-embeddings').textContent = memory.embeddings || 0;
 
     // Progress Bars Rendering
@@ -787,8 +944,8 @@ async function syncMemory() {
     document.getElementById('mem-prog-summaries-val').textContent = `${memory.summaries || 0} 条`;
     document.getElementById('mem-prog-summaries').style.width = `${getPercent(memory.summaries, maxBase)}%`;
 
-    document.getElementById('mem-prog-archived-val').textContent = `${memory.archivedSummaries || 0} 份`;
-    document.getElementById('mem-prog-archived').style.width = `${getPercent(memory.archivedSummaries, maxBase)}%`;
+    document.getElementById('mem-prog-identities-val').textContent = `${memory.identities || 0} 人`;
+    document.getElementById('mem-prog-identities').style.width = `${getPercent(memory.identities, maxBase)}%`;
 
     document.getElementById('mem-prog-profiles-val').textContent = `${memory.profiles || 0} 个`;
     document.getElementById('mem-prog-profiles').style.width = `${getPercent(memory.profiles, embedBase)}%`;
@@ -827,8 +984,16 @@ async function syncConfig() {
     setSwitchState('sw-enablePrefixTrigger', config.loli?.enablePrefixTrigger);
     setSwitchState('sw-enableKeywordTrigger', config.loli?.enableKeywordTrigger);
     setSwitchState('sw-enableProactiveTrigger', config.loli?.enableProactiveTrigger);
+    setSwitchState('sw-masterIdentity', config.loli?.masterIdentity?.enable !== false);
 
     document.getElementById('inp-defaultPreset').value = config.loli?.defaultPreset || '';
+    const masterIdentity = config.loli?.masterIdentity || {};
+    const masterUsers = Array.isArray(masterIdentity.users) ? masterIdentity.users : [];
+    const masterNames = new Map(masterUsers.map(user => [String(user.userId), user.nickname || '']));
+    document.getElementById('inp-masterIdentities').value = (masterIdentity.userIds || [])
+      .map(userId => `${userId}${masterNames.get(String(userId)) ? ` · ${masterNames.get(String(userId))}` : ' · 待获取昵称'}`)
+      .join('\n');
+    document.getElementById('inp-masterAppellation').value = config.loli?.masterIdentity?.appellation || '';
     
     // Proactive probability slider
     const prob = config.loli?.promptProbability || 0;
@@ -883,6 +1048,16 @@ async function syncConfig() {
     document.getElementById('inp-mem-refine-model').value = config.memory?.refinementModel || 'gemini-2.5-flash';
     document.getElementById('inp-mem-refine-channel').value = config.memory?.refinementChannelId || 'gemini';
 
+    // Hermes group learning
+    setSwitchState('sw-group-learning-enable', config.memory?.groupLearning?.enable !== false);
+    document.getElementById('inp-group-learning-persona').value = config.memory?.groupLearning?.perspectivePresetId || '';
+    document.getElementById('inp-group-learning-min').value = config.memory?.groupLearning?.minMessages || 100;
+    document.getElementById('inp-group-learning-every').value = config.memory?.groupLearning?.updateEveryMessages || 50;
+    document.getElementById('inp-group-learning-users').value = config.memory?.groupLearning?.minActiveUsers || 5;
+    document.getElementById('inp-group-learning-days').value = config.memory?.groupLearning?.windowDays || 14;
+    document.getElementById('inp-group-learning-confidence').value = config.memory?.groupLearning?.autoApplyMinConfidence ?? 0.72;
+    document.getElementById('inp-group-learning-per-user').value = config.memory?.groupLearning?.maxSamplesPerUser || 30;
+
     // Embedding
     setSwitchState('sw-embed-enable', config.memory?.embedding?.enable);
     document.getElementById('inp-embed-model').value = config.memory?.embedding?.model || 'gemini-embedding-2';
@@ -890,6 +1065,12 @@ async function syncConfig() {
     document.getElementById('inp-embed-dim').value = config.memory?.embedding?.outputDimensionality || 768;
     document.getElementById('inp-embed-topk').value = config.memory?.embedding?.topK || 8;
     document.getElementById('inp-embed-minScore').value = config.memory?.embedding?.minScore || 0.2;
+
+    setSwitchState('sw-stickers-enable', config.stickers?.enable !== false);
+    setSwitchState('sw-stickers-auto', config.stickers?.autoCollectMaster !== false);
+    setSwitchState('sw-stickers-classify', config.stickers?.autoClassify !== false);
+    document.getElementById('inp-stickers-probability').value = Math.round((config.stickers?.probability ?? 0.35) * 100);
+    document.getElementById('inp-stickers-cooldown').value = Math.round((config.stickers?.cooldownMs ?? 60000) / 1000);
     document.getElementById('inp-mem-group-enabledGroups').value = arrayToText(config.memory?.group?.enabledGroups);
 
     // Tab 5: System parameters sheets
@@ -927,6 +1108,13 @@ async function handleSaveConfig() {
       enableKeywordTrigger: getSwitchState('sw-enableKeywordTrigger'),
       enableProactiveTrigger: getSwitchState('sw-enableProactiveTrigger'),
       defaultPreset: document.getElementById('inp-defaultPreset').value.trim(),
+      masterIdentity: {
+        enable: getSwitchState('sw-masterIdentity'),
+        autoDetect: getSwitchState('sw-masterIdentity'),
+        userIds: state.config.loli?.masterIdentity?.userIds || [],
+        users: state.config.loli?.masterIdentity?.users || [],
+        appellation: document.getElementById('inp-masterAppellation').value.trim()
+      },
       promptProbability: Number(document.getElementById('inp-promptProbability').value),
       triggerPrefix: sanitizeArray(document.getElementById('inp-triggerPrefix').value),
       triggerKeywords: sanitizeArray(document.getElementById('inp-triggerKeywords').value),
@@ -987,6 +1175,16 @@ async function handleSaveConfig() {
       },
       refinementModel: document.getElementById('inp-mem-refine-model').value.trim(),
       refinementChannelId: document.getElementById('inp-mem-refine-channel').value.trim(),
+      groupLearning: {
+        enable: getSwitchState('sw-group-learning-enable'),
+        perspectivePresetId: document.getElementById('inp-group-learning-persona').value.trim(),
+        minMessages: Number(document.getElementById('inp-group-learning-min').value) || 100,
+        updateEveryMessages: Number(document.getElementById('inp-group-learning-every').value) || 50,
+        minActiveUsers: Number(document.getElementById('inp-group-learning-users').value) || 5,
+        windowDays: Number(document.getElementById('inp-group-learning-days').value) || 14,
+        autoApplyMinConfidence: Number(document.getElementById('inp-group-learning-confidence').value) || 0.72,
+        maxSamplesPerUser: Number(document.getElementById('inp-group-learning-per-user').value) || 30
+      },
       embedding: {
         enable: getSwitchState('sw-embed-enable'),
         model: document.getElementById('inp-embed-model').value.trim(),
@@ -995,6 +1193,13 @@ async function handleSaveConfig() {
         topK: Number(document.getElementById('inp-embed-topk').value) || 8,
         minScore: Number(document.getElementById('inp-embed-minScore').value) || 0.2
       }
+    },
+    stickers: {
+      enable: getSwitchState('sw-stickers-enable'),
+      autoCollectMaster: getSwitchState('sw-stickers-auto'),
+      autoClassify: getSwitchState('sw-stickers-classify'),
+      probability: Math.max(0, Math.min(1, Number(document.getElementById('inp-stickers-probability').value) / 100 || 0)),
+      cooldownMs: Math.max(0, Number(document.getElementById('inp-stickers-cooldown').value) * 1000 || 0)
     },
     llm: {
       groupContextTemplatePrefix: document.getElementById('inp-tpl-prefix').value,

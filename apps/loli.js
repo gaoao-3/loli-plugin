@@ -2,14 +2,31 @@
  * 伪人模式 — 日奈的核心对话逻辑
  * 适配 lolicon-core 引擎
  */
-import { getEngine, getConfig, DATA_DIR, initPlugin, destroyPlugin } from '../utils/state.js'
+import { getEngine, getConfig, saveConfig, DATA_DIR, initPlugin, destroyPlugin } from '../utils/state.js'
 import { addInteractionHint, intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
 import { getSelfId, isGroupEvent, makeAtSegment, makeForwardMsg, normalizeSegment } from '../utils/bot.js'
 import { getGroupContextPrompt, getGroupHistory } from '../utils/group.js'
 import { formatTimeToBeiJing } from '../utils/common.js'
 import { REPLY_SPLIT_MARKER, sendReplyChunks, splitReplyText } from '../utils/reply.js'
+import { captureEventMasterIdentity, resolveEventIdentity, stripIdentityPrompt } from '../utils/identity.js'
 import { buildMemoryPrompt } from '../memory/prompt.js'
 import { collect } from '../memory/collector.js'
+import { buildGroupLearningPrompt, observeGroupMessage } from '../memory/group-learning.js'
+import { resolveMemoryBaseDir } from '../memory/options.js'
+import { buildIdentityAwarenessPrompt, recordGroupIdentity } from '../memory/identity.js'
+import {
+  autoCollectMasterStickers,
+  buildStickerDirectivePrompt,
+  extractStickerDirective,
+  findSticker,
+  getInlineFacePayload,
+  injectInlineStickerPayload,
+  INLINE_STICKER_TOKEN,
+  markStickerUsed,
+  sendSticker,
+  shouldAutoSendSticker
+} from '../utils/stickers.js'
+import { enqueueStickerClassifications } from '../utils/sticker-classifier.js'
 import { randomUUID } from 'crypto'
 import path from 'path'
 
@@ -25,6 +42,7 @@ const cooldowns = {
   user: new Map(),
   group: new Map()
 }
+const stickerCooldowns = new Map()
 
 // ─── 辅助函数 ──────────────────────────────────
 
@@ -86,6 +104,26 @@ function parseAtMentions (text, nameMap) {
   return parts.length > 0 ? parts : [text]
 }
 
+function mergeStandaloneInlineStickerChunks (chunks) {
+  const merged = []
+  for (const chunk of chunks) {
+    if (chunk !== INLINE_STICKER_TOKEN) {
+      merged.push(chunk)
+      continue
+    }
+    if (merged.length > 0) {
+      merged[merged.length - 1] += INLINE_STICKER_TOKEN
+    } else {
+      merged.push(chunk)
+    }
+  }
+  if (merged.length > 1 && merged[0] === INLINE_STICKER_TOKEN) {
+    merged[1] = INLINE_STICKER_TOKEN + merged[1]
+    merged.shift()
+  }
+  return merged
+}
+
 function _checkManualAt (e) {
   if (!Array.isArray(e.message)) return false
   const selfId = getSelfId(e)
@@ -121,8 +159,7 @@ function _getConversationKey (cfg, uid, gid) {
 }
 
 function _resolveMemoryBaseDir () {
-  const dataDir = getConfig().memory?.dailyMd?.dataDir || 'data/memory/md'
-  return path.isAbsolute(dataDir) ? dataDir : path.resolve(DATA_DIR, '..', dataDir)
+  return resolveMemoryBaseDir(getConfig(), path.resolve(DATA_DIR, '..'))
 }
 
 function _formatTriggerLog (trigger, uid, gid) {
@@ -222,6 +259,14 @@ export class loli extends plugin {
     const engine = getEngine()
     if (!engine) return false
 
+    if (captureEventMasterIdentity(e, getConfig())) saveConfig()
+    try {
+      const collectedStickers = autoCollectMasterStickers(e, getConfig())
+      enqueueStickerClassifications({ engine, config: getConfig(), event: e, stickers: collectedStickers, logger })
+    } catch (err) {
+      logger?.warn?.(`[Sticker] 自动收录失败: ${err.message}`)
+    }
+
     const selfId = getSelfId(e)
     if (selfId && String(e.user_id || e.sender?.user_id || '') === selfId) return false
 
@@ -232,6 +277,17 @@ export class loli extends plugin {
     const gid = inGroup ? String(e.group_id || e.group?.group_id || e.group?.gid) : null
 
     if (!_isChatAllowed(cfg, uid, gid)) return false
+
+    // 旁听合格群消息：让摘要与群风格学习覆盖真实群聊，而不只覆盖触发机器人的消息。
+    if (cfg.enable && inGroup) {
+      observeGroupMessage({
+        baseDir: _resolveMemoryBaseDir(),
+        event: e,
+        userText: e.msg || '',
+        config: getConfig(),
+        logger
+      })
+    }
 
     const trigger = this._resolveTrigger(e)
     if (!trigger.type) return false
@@ -357,7 +413,16 @@ export class loli extends plugin {
       }
     }
 
-    const userText = extractTextFromUserMessage(userMessage) || e.msg || ''
+    if (inGroup) {
+      recordGroupIdentity({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        identity: resolveEventIdentity(e, getConfig()),
+        observedAt: now
+      })
+    }
+
+    const userText = stripIdentityPrompt(extractTextFromUserMessage(userMessage)) || e.msg || ''
     const interactionHint = _getInteractionHint(trigger, inGroup)
     if (interactionHint) userMessage = addInteractionHint(userMessage, interactionHint)
 
@@ -368,6 +433,26 @@ export class loli extends plugin {
     const systemSegments = []
     const systemText = preset.systemPrompt?.content || chaiteConfig.presets?.find(p => p.id === presetId)?.systemPrompt?.content || ''
     if (systemText) systemSegments.push(systemText)
+
+    if (inGroup) {
+      const identityPrompt = buildIdentityAwarenessPrompt({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        userId: uid,
+        config: getConfig()
+      })
+      if (identityPrompt) systemSegments.push(identityPrompt)
+    }
+
+    // Hermes 风格的群级 USER/MEMORY 覆盖层；只调整表达与互动策略，不改核心人设。
+    if (inGroup) {
+      const learnedGroupPrompt = buildGroupLearningPrompt({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        config: getConfig()
+      })
+      if (learnedGroupPrompt) systemSegments.push(learnedGroupPrompt)
+    }
     systemSegments.push(`[运行环境]\n当前北京时间：${formatTimeToBeiJing(now)}\n时区：Asia/Shanghai（UTC+8）`)
 
     // 记忆提示
@@ -403,6 +488,20 @@ export class loli extends plugin {
 每段都必须是可以单独发送的自然聊天内容。不要逐句机械分段，不要连续输出标记，不要解释或展示此规则。普通换行不代表分段。`)
     }
 
+    const stickerConfig = getConfig()
+    const stickerKey = conversationKey
+    const configuredStickerCooldown = Number(stickerConfig?.stickers?.cooldownMs)
+    const stickerCooldownMs = Number.isFinite(configuredStickerCooldown) ? Math.max(0, configuredStickerCooldown) : 60000
+    const stickerCooldownOpen = Date.now() - (stickerCooldowns.get(stickerKey) || 0) >= stickerCooldownMs
+    if (stickerCooldownOpen && shouldAutoSendSticker(stickerConfig)) {
+      try {
+        const stickerPrompt = buildStickerDirectivePrompt(stickerConfig)
+        if (stickerPrompt) systemSegments.push(stickerPrompt)
+      } catch (err) {
+        logger?.warn?.(`[Sticker] 构建表情提示失败: ${err.message}`)
+      }
+    }
+
     const systemPromptOverride = systemSegments.length > 0 ? systemSegments.join('\n\n') : undefined
 
     // 发送消息
@@ -417,22 +516,60 @@ export class loli extends plugin {
     })
 
     const responseText = result.finalText
-    let deliveredResponseText = responseText
+    const stickerDirective = extractStickerDirective(responseText)
+    const visibleResponseText = stickerDirective.text
+    let deliveredResponseText = visibleResponseText
+    let matchedSticker = null
+    let inlineFacePayload = null
+    let replySourceText = visibleResponseText
+
+    if (stickerDirective.emotion && stickerConfig?.stickers?.enable !== false && stickerCooldownOpen) {
+      matchedSticker = findSticker({ emotion: stickerDirective.emotion })
+      if (!matchedSticker) {
+        logger?.debug?.(`[Sticker] 没有匹配标签“${stickerDirective.emotion}”的可用表情，跳过发送`)
+      } else {
+        // 有正文时按模型标记位置嵌入普通小黄脸；纯表情回复仍交给独立发送函数。
+        inlineFacePayload = visibleResponseText ? getInlineFacePayload(matchedSticker) : null
+        if (inlineFacePayload) replySourceText = stickerDirective.positionedText
+      }
+    }
 
     // 回复消息
-    if (responseText) {
+    if (visibleResponseText) {
       const segmentedReply = cfg.segmentedReply || {}
-      const chunks = splitReplyText(responseText, segmentedReply)
-      deliveredResponseText = chunks.join('\n')
+      const chunks = mergeStandaloneInlineStickerChunks(splitReplyText(replySourceText, segmentedReply))
+      deliveredResponseText = chunks.map(chunk => chunk.replaceAll(INLINE_STICKER_TOKEN, '')).join('\n')
       const sentCount = await sendReplyChunks(e, chunks, {
         ...segmentedReply,
         recallSeconds: cfg.recallDefault || 0,
-        transform: chunk => parseAtMentions(chunk, chatterNameMap)
+        transform: chunk => {
+          const parts = inlineFacePayload
+            ? injectInlineStickerPayload(chunk, inlineFacePayload)
+            : [chunk]
+          return parts.flatMap(part => typeof part === 'string'
+            ? parseAtMentions(part, chatterNameMap)
+            : [part])
+        }
       })
+      if (inlineFacePayload) {
+        markStickerUsed(matchedSticker)
+        stickerCooldowns.set(stickerKey, Date.now())
+      }
       if (sentCount > 1) {
         const sentAt = Date.now()
         cooldowns.user.set(uid, sentAt)
         if (gid) cooldowns.group.set(gid, sentAt)
+      }
+    }
+
+    if (matchedSticker && !inlineFacePayload) {
+      try {
+        await sendSticker(e, matchedSticker, undefined, {
+          nativeSuperface: stickerConfig?.stickers?.nativeSuperface === true
+        })
+        stickerCooldowns.set(stickerKey, Date.now())
+      } catch (err) {
+        logger?.warn?.(`[Sticker] 表情 #${matchedSticker.id} 发送失败: ${err.message}`)
       }
     }
 
@@ -469,6 +606,11 @@ export class loli extends plugin {
         event: e,
         userText,
         assistantText: deliveredResponseText,
+        assistantIdentity: {
+          userId: selfId,
+          displayName: preset.name || presetId || 'AI助手',
+          nickname: preset.name || presetId || 'AI助手'
+        },
         config: getConfig()
       })
     }

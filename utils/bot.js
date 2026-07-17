@@ -76,6 +76,7 @@ function segmentFactory (name, fallback) {
 }
 
 export const makeAtSegment = (qq, name) => segmentFactory('at', (id, text) => ({ type: 'at', qq: id, text }))(Number(qq), name)
+export const makeFaceSegment = (id, big = false) => segmentFactory('face', (faceId, isBig) => ({ type: 'face', id: faceId, big: isBig }))(Number(id), Boolean(big))
 export const makeImageSegment = file => segmentFactory('image', value => ({ type: 'image', file: value }))(file)
 export const makeRecordSegment = file => segmentFactory('record', value => ({ type: 'record', file: value }))(file)
 export const makeMusicSegment = (platform, id) => segmentFactory('music', (type, songId) => ({ type: 'music', platform: type, id: String(songId) }))(platform, String(id))

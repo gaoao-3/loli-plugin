@@ -1,0 +1,168 @@
+diff --git a/src/clients/gemini.js b/src/clients/gemini.js
+index 16b7589f185ae8ad2b42dc20fc89cad2d8b20ffb..aa25da0 100644
+--- a/src/clients/gemini.js
++++ b/src/clients/gemini.js
+@@ -6,6 +6,31 @@ import { GoogleGenAI } from '@google/genai'
+ import { AbstractClient } from './abstract.js'
+ import { fromChaiteConverter, intoChaiteConverter } from '../converters/gemini.js'
+ 
++const SAFETY_CATEGORIES = [
++  'HARM_CATEGORY_HARASSMENT',
++  'HARM_CATEGORY_HATE_SPEECH',
++  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
++  'HARM_CATEGORY_DANGEROUS_CONTENT'
++]
++
++const SAFETY_THRESHOLDS = {
++  off: 'OFF',
++  permissive: 'BLOCK_ONLY_HIGH',
++  balanced: 'BLOCK_MEDIUM_AND_ABOVE',
++  strict: 'BLOCK_LOW_AND_ABOVE'
++}
++
++export function normalizeGeminiSafetyLevel (value) {
++  const level = String(value || 'default').trim().toLowerCase()
++  return ['default', ...Object.keys(SAFETY_THRESHOLDS)].includes(level) ? level : 'default'
++}
++
++export function resolveGeminiSafetySettings (value) {
++  const threshold = SAFETY_THRESHOLDS[normalizeGeminiSafetyLevel(value)]
++  if (!threshold) return undefined
++  return SAFETY_CATEGORIES.map(category => ({ category, threshold }))
++}
++
+ export class GeminiClient extends AbstractClient {
+   get adapterType () { return 'gemini' }
+ 
+@@ -22,6 +47,11 @@ export class GeminiClient extends AbstractClient {
+     const model = options.model || this.options.model || 'gemini-2.5-flash'
+     const temperature = options.temperature ?? 0.9
+     const maxOutputTokens = options.maxTokens || 2048
++    const safetySettings = resolveGeminiSafetySettings(options.safetyLevel ?? this.options.safetyLevel)
++    const includeServerSideToolInvocations =
++      options.includeServerSideToolInvocations ??
++      this.options.includeServerSideToolInvocations ??
++      this.options.providerType === 'antigravity'
+ 
+     // 初始化客户端
+     const genAI = new GoogleGenAI({
+@@ -35,18 +65,34 @@ export class GeminiClient extends AbstractClient {
+       .filter(Boolean)
+ 
+     // 转换工具
++    const toolNameAliases = new Map()
+-    const toolDeclarations = (options.tools || [])
++    const toolDeclarations = (options.disableTools ? [] : (options.tools || []))
+       .map(t => {
+         const def = t.toolDef || t
+         if (!def?.function) return null
++        const originalName = def.function.name
++        const apiName = this.options.providerType === 'antigravity' && originalName === 'web_search'
++          ? 'loli_web_search'
++          : originalName
++        if (apiName !== originalName) toolNameAliases.set(apiName, originalName)
+         return {
+-          name: def.function.name,
++          name: apiName,
+           description: def.function.description,
+           parameters: def.function.parameters
+         }
+       })
+       .filter(Boolean)
+ 
++    const convertResponse = (response) => {
++      const converted = intoChaiteConverter(response, model)
++      for (const item of converted?.content || []) {
++        if (item.type === 'toolCall' && toolNameAliases.has(item.name)) {
++          item.name = toolNameAliases.get(item.name)
++        }
++      }
++      return converted
++    }
++
+     // 构建请求
+     /** @type {Object} */
+     const generateConfig = {
+@@ -55,7 +101,11 @@ export class GeminiClient extends AbstractClient {
+       config: {
+         temperature,
+         maxOutputTokens,
+-        ...(options.topP !== undefined ? { topP: options.topP } : {})
++        ...(options.topP !== undefined ? { topP: options.topP } : {}),
++        ...(safetySettings ? { safetySettings } : {}),
++        ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {}),
++        ...(options.responseJsonSchema ? { responseJsonSchema: options.responseJsonSchema } : {}),
++        ...(!options.responseJsonSchema && options.responseSchema ? { responseSchema: options.responseSchema } : {})
+       }
+     }
+ 
+@@ -91,6 +141,9 @@ export class GeminiClient extends AbstractClient {
+     // 工具声明
+     if (toolDeclarations.length > 0) {
+       generateConfig.config.tools = [{ functionDeclarations: toolDeclarations }]
++      if (includeServerSideToolInvocations) {
++        generateConfig.config.toolConfig = { includeServerSideToolInvocations: true }
++      }
+     }
+ 
+     // 系统提示 → 放在第一个 user content 前
+@@ -103,20 +156,19 @@ export class GeminiClient extends AbstractClient {
+ 
+     try {
+       const response = await genAI.models.generateContent(generateConfig)
+-      return intoChaiteConverter(response, model)
++      return convertResponse(response)
+     } catch (err) {
+       // "Corrupted thought signature" 400 错误 → 自动降级：关闭思考模式重试一次
+       const isSignatureError =
+         err?.message?.includes('thought signature') ||
+-        err?.message?.includes('Corrupted thought') ||
+-        err?.status === 400
++        err?.message?.includes('Corrupted thought')
+ 
+       if (isSignatureError && generateConfig.config.thinkingConfig) {
+         this.logger?.warn?.('[Gemini] Thought signature error, retrying without thinking mode')
+         delete generateConfig.config.thinkingConfig
+         try {
+           const response = await genAI.models.generateContent(generateConfig)
+-          return intoChaiteConverter(response, model)
++          return convertResponse(response)
+         } catch (retryErr) {
+           throw retryErr
+         }
+diff --git a/src/engine.js b/src/engine.js
+index a45a46413463b745981c0f2276b5a06c393ec141..55b01fa420ca37753a1a54155b086a3a3605f540 100644
+--- a/src/engine.js
++++ b/src/engine.js
+@@ -297,8 +297,17 @@ export class LoliEngine {
+     return this.storage.clearHistory(conversationId)
+   }
+ 
+-  saveChannel (ch) { return this.storage.saveChannel(ch) }
++  async saveChannel (ch) {
++    const saved = await this.storage.saveChannel(ch)
++    // 渠道配置（包括 Gemini 安全等级）变更后，下次请求重建客户端并立即生效。
++    this.#clients.delete(saved.id)
++    return saved
++  }
+   listChannels () { return this.storage.listChannels() }
++  async deleteChannel (id) {
++    this.#clients.delete(id)
++    return this.storage.deleteChannel(id)
++  }
+   savePreset (p) { return this.storage.savePreset(p) }
+   listPresets () { return this.storage.listPresets() }
+   getPreset (id) { return this.storage.getPreset(id) }
+diff --git a/src/types.js b/src/types.js
+index 718848cd8ef0bbb897e41186313fb127cfc4b8d3..582ef3dd5e0e101ced8f62b4746ba1f596d66386 100644
+--- a/src/types.js
++++ b/src/types.js
+@@ -9,7 +9,7 @@
+  * @property {string} name
+  * @property {'gemini'|'openai'} adapterType
+  * @property {string[]} models
+- * @property {Object} options - adapter options (apiKey, baseUrl, etc.)
++ * @property {Object} options - adapter options (apiKey, baseUrl, safetyLevel, etc.)
+  * @property {'public'|'private'} [visibility='public']
+  * @property {'enabled'|'disabled'} [status='enabled']
+  */

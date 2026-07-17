@@ -10,5 +10,6 @@ import { QQMusicAccount } from './apps/music_account.js'
 import { loliHelp } from './apps/help.js'
 import { loliMemory } from './apps/memory.js'
 import { loliUpdate } from './apps/update.js'
+import { loliStickers } from './apps/stickers.js'
 
-export { loli, QQMusicAccount, loliHelp, loliMemory, loliUpdate }
+export { loli, QQMusicAccount, loliHelp, loliMemory, loliUpdate, loliStickers }
