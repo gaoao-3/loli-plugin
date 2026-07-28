@@ -29,6 +29,12 @@ export class loliHelp extends plugin {
     const prefix = formatList(loli.triggerPrefix, '#ai')
     const keywords = formatList(loli.triggerKeywords, '未配置')
     const version = cfg.version || '0.1.0'
+    const stickerConfig = cfg.stickers || {}
+    const stickerProbability = formatStickerProbability(stickerConfig.probability)
+    const stickerCooldown = formatStickerCooldown(stickerConfig.cooldownMs)
+    const interactionConfig = cfg.interactions || {}
+    const reactionConfig = interactionConfig.reaction || {}
+    const pokeConfig = interactionConfig.poke || {}
 
     const sections = [
       [
@@ -40,24 +46,23 @@ export class loliHelp extends plugin {
         '• AI 可自主调用搜索、天气、音乐等工具'
       ].join('\n'),
       [
-        '🧠 记忆与画像',
-        '• #群记忆　查看本群长期记忆',
-        '• #群画像　查看本群整体画像',
-        '• #我的记忆　查看 AI 对你的记忆',
-        '• #我的画像　查看个人画像',
+        '🧠 AI 用户印象',
+        '• #我的印象　查看 AI 自主维护的沟通偏好与长期印象',
+        '• #用户印象 <QQ号>　查看指定 QQ 的用户印象（主人）',
+        '• #立即更新我的印象　立即审查自己的近期原始消息（主人）',
+        '• 旧指令 #我的记忆 / #群友记忆 仍可兼容',
         '• #我的身份　查看 QQ 身份账本与防冒充信息'
       ].join('\n'),
       [
-        '🎭 自适应群聊',
-        '• #群风格　查看已学习的群文化与角色记忆',
-        '• #群学习状态　查看学习版本和审查状态',
-        '• #立即学习群风格　立即执行一次学习（主人）',
+        '🎭 AI 群风格',
+        '• #群风格　查看 AI 自主维护的紧凑群风格',
+        '• #群学习状态　查看快照版本和审查状态',
+        '• #立即学习群风格　立即生成一次新快照（主人）',
         '• #群风格回滚 <版本号>　回滚学习结果（主人）'
       ].join('\n'),
       [
         '🛠️ 记忆管理（主人）',
-        '• #记忆诊断　查看存储和调度器情况',
-        '• #立即摘要　立即执行记忆摘要',
+        '• #记忆诊断　查看原始消息、群风格与用户印象状态',
         '• #身份查询 <QQ号>　查询群友真实身份认知'
       ].join('\n'),
       [
@@ -75,7 +80,20 @@ export class loliHelp extends plugin {
         '• #测试表情 <ID>　测试发送（主人）',
         '• #停用表情 <ID> / #删除表情 <ID>　管理表情（主人）',
         '• #自动收录表情 开启|关闭　自动收录主人发送的表情',
-        'AI 会在正文之后按聊天情绪自然跟发表情，不执行额外工具调用。'
+        '• #表情意图 <ID> <意图...>　修正核心意图并锁定',
+        '• #表情风险 <ID> 安全|谨慎|高风险　修正风险等级',
+        '• #自动发送表情 <ID> 开启|关闭　控制 AI 自动发送',
+        '• #解锁表情 <ID>　允许视觉分类再次更新',
+        '• #重新识别表情 <ID>　强制重新生成意图与风险',
+        `• 当前策略：每轮 ${stickerProbability} 概率开放表情选择，同一会话冷却 ${stickerCooldown}`,
+        'AI 只选择核心意图；发送层再按正文语境、风格和风险挑选具体表情。普通小黄脸可嵌入正文，图片与超级表情独立发送。'
+      ].join('\n'),
+      [
+        '🤏 QQ 轻互动',
+        `• 消息表情回应：${toggle(interactionConfig.enable !== false && reactionConfig.enable !== false)}｜开放概率 ${formatProbability(reactionConfig.probability, 0.25)}｜冷却 ${formatStickerCooldown(reactionConfig.cooldownMs ?? 45000)}`,
+        `• 被戳后回戳：${toggle(interactionConfig.enable !== false && pokeConfig.enable !== false)}｜回戳概率 ${formatProbability(pokeConfig.returnProbability, 0.35)}｜冷却 ${formatStickerCooldown(pokeConfig.cooldownMs ?? 300000)}`,
+        `• 每名群友每天最多回戳 ${formatPositiveInteger(pokeConfig.dailyUserLimit, 3)} 次`,
+        '消息回应和发送表情每轮最多采用一种；机器人不会主动戳陌生群友。'
       ].join('\n'),
       [
         '⚙️ 插件管理',
@@ -106,6 +124,12 @@ export class loliHelp extends plugin {
     })
     const stats = readMemoryStats(cfg)
     const stickers = readStickerStats()
+    const stickerConfig = cfg.stickers || {}
+    const stickerProbability = formatStickerProbability(stickerConfig.probability)
+    const stickerCooldown = formatStickerCooldown(stickerConfig.cooldownMs)
+    const interactionConfig = cfg.interactions || {}
+    const reactionConfig = interactionConfig.reaction || {}
+    const pokeConfig = interactionConfig.poke || {}
 
     const lines = [
       `✨ 日奈状态 · v${cfg.version || '0.1.0'}`,
@@ -120,13 +144,15 @@ export class loliHelp extends plugin {
       `AI 渠道：${enabledChannels.length}/${channels.length} 个启用｜可用模型 ${countModels(enabledChannels)} 个`,
       ...(routes.length ? routes.map(route => `• ${route}`) : ['• 暂无启用的角色预设']),
       '',
-      `群组记忆：${toggle(memory.group?.enable)}｜用户记忆：${toggle(memory.user?.enable)}`,
-      `自适应群聊：${toggle(memory.groupLearning?.enable !== false)}｜向量检索：${toggle(memory.embedding?.enable)}`,
+      `群消息采集：${toggle(memory.group?.enable)}｜AI 用户印象：${toggle(memory.memberLearning?.enable !== false)}`,
+      `AI 群风格：${toggle(memory.groupLearning?.enable !== false)}`,
       stats
-        ? `SQLite：消息 ${stats.messages}｜摘要 ${stats.summaries}｜画像 ${stats.profiles}｜身份 ${stats.identities}｜向量 ${stats.embeddings}`
+        ? `SQLite：消息 ${stats.messages}｜用户印象 ${stats.learnedMembers}｜身份 ${stats.identities}`
         : 'SQLite：⚠️ 暂时无法读取',
-      stats ? `群学习：${stats.learnedGroups} 个群｜${stats.learningVersions} 个版本` : '',
-      `QQ 表情库：${cfg.stickers?.enable === false ? '❌ 关闭' : `✅ ${stickers.enabled}/${stickers.total} 个可用`}｜自动收录：${toggle(cfg.stickers?.autoCollectMaster !== false)}｜视觉识别：${toggle(cfg.stickers?.autoClassify !== false)}`,
+      stats ? `群风格：${stats.learnedGroups} 个群/${stats.learningVersions} 版｜用户印象 ${stats.memberMemoryVersions} 版` : '',
+      `QQ 表情库：${stickerConfig.enable === false ? '❌ 关闭' : `✅ ${stickers.autoSendable}/${stickers.enabled} 个可自动发送（共 ${stickers.total}）`}`,
+      `表情策略：开放概率 ${stickerProbability}｜冷却 ${stickerCooldown}｜自动收录 ${toggle(stickerConfig.autoCollectMaster !== false)}｜视觉识别 ${toggle(stickerConfig.autoClassify !== false)}｜原生超级表情 ${toggle(stickerConfig.nativeSuperface === true)}`,
+      `轻互动：消息回应 ${toggle(interactionConfig.enable !== false && reactionConfig.enable !== false)} ${formatProbability(reactionConfig.probability, 0.25)}/${formatStickerCooldown(reactionConfig.cooldownMs ?? 45000)}｜被戳回戳 ${toggle(interactionConfig.enable !== false && pokeConfig.enable !== false)} ${formatProbability(pokeConfig.returnProbability, 0.35)}/${formatStickerCooldown(pokeConfig.cooldownMs ?? 300000)}｜每日 ${formatPositiveInteger(pokeConfig.dailyUserLimit, 3)} 次`,
       '',
       '发送 #loli帮助 查看完整指令。'
     ].filter(line => line !== null && line !== undefined)
@@ -158,6 +184,28 @@ function formatDuration (milliseconds) {
   return `${seconds}秒`
 }
 
+function formatStickerProbability (value) {
+  return formatProbability(value, 0.35)
+}
+
+function formatStickerCooldown (value) {
+  const configured = Number(value)
+  const milliseconds = Number.isFinite(configured) ? Math.max(0, configured) : 60000
+  if (milliseconds >= 60000 && milliseconds % 60000 === 0) return `${milliseconds / 60000}分钟`
+  return `${Math.round(milliseconds / 1000)}秒`
+}
+
+function formatProbability (value, fallback) {
+  const configured = Number(value)
+  const probability = Number.isFinite(configured) ? Math.max(0, Math.min(1, configured)) : fallback
+  return `${Math.round(probability * 100)}%`
+}
+
+function formatPositiveInteger (value, fallback) {
+  const configured = Number(value)
+  return Number.isFinite(configured) ? Math.max(0, Math.floor(configured)) : fallback
+}
+
 async function readRuntimeChannels (engine, cfg) {
   try {
     const channels = await engine?.listChannels?.()
@@ -178,6 +226,6 @@ function readStickerStats () {
   try {
     return getStickerStats()
   } catch {
-    return { total: 0, enabled: 0 }
+    return { total: 0, enabled: 0, autoSendable: 0, uses: 0 }
   }
 }

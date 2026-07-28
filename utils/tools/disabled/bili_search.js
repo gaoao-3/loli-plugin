@@ -1,7 +1,7 @@
 /**
  * Bilibili 搜索工具 - 搜索视频/B站内容
  */
-import { CustomTool } from 'lolicon-core'
+import { CustomTool } from '../../core/index.js'
 
 class BiliSearch extends CustomTool {
 

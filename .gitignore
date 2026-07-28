@@ -1,4 +1,6 @@
 data/
+memory.sqlite*
 node_modules/
 .codex-remote-attachments/
+.agents
 test/

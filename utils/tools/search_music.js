@@ -1,8 +1,8 @@
 /**
  * QQ 音乐搜索工具
- * 适配 lolicon-core，支持可选 cookie（搜索 VIP 歌曲）
+ * 适配插件内置引擎，支持可选 cookie（搜索 VIP 歌曲）
  */
-import { CustomTool } from 'lolicon-core'
+import { CustomTool } from '../../core/index.js'
 import { fetchWithTimeout, musicAuth } from '../music.js'
 
 class SearchMusic extends CustomTool {

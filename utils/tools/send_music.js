@@ -4,7 +4,7 @@
  * 获取真实播放链接 + 专辑封面，发送 custom music 段
  */
 import { createHash } from 'node:crypto'
-import { CustomTool } from 'lolicon-core'
+import { CustomTool } from '../../core/index.js'
 import { fetchWithTimeout, musicAuth, readMusicConfig, stableMusicGuid } from '../music.js'
 import { makeMusicSegment } from '../bot.js'
 

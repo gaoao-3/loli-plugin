@@ -70,6 +70,15 @@ export function getEventGroup (event) {
   return bot.pickGroup(Number(groupId)) || bot.pickGroup(groupId)
 }
 
+/** 优先复用事件上的好友实体，必要时从当前 Bot 实例获取。 */
+export function getEventFriend (event) {
+  if (event?.friend) return event.friend
+  const bot = getEventBot(event)
+  const userId = event?.user_id ?? event?.sender?.user_id
+  if (!bot || userId === undefined || userId === null || typeof bot.pickFriend !== 'function') return null
+  return bot.pickFriend(Number(userId)) || bot.pickFriend(userId)
+}
+
 function segmentFactory (name, fallback) {
   const factory = globalThis.segment?.[name]
   return typeof factory === 'function' ? factory : fallback
@@ -80,6 +89,29 @@ export const makeFaceSegment = (id, big = false) => segmentFactory('face', (face
 export const makeImageSegment = file => segmentFactory('image', value => ({ type: 'image', file: value }))(file)
 export const makeRecordSegment = file => segmentFactory('record', value => ({ type: 'record', file: value }))(file)
 export const makeMusicSegment = (platform, id) => segmentFactory('music', (type, songId) => ({ type: 'music', platform: type, id: String(songId) }))(platform, String(id))
+
+/**
+ * 发送本地普通文件。
+ *
+ * ICQQ 1.11.4:
+ * - 群聊 Group.sendFile(file, pid = '/', name)
+ * - 私聊 Friend.sendFile(file, filename)
+ *
+ * @returns {Promise<boolean>} 是否找到可用文件发送接口并成功调用
+ */
+export async function sendFileToEvent (event, file, filename) {
+  if (isGroupEvent(event)) {
+    const group = event?.group || getEventGroup(event)
+    if (typeof group?.sendFile !== 'function') return false
+    await group.sendFile(file, '/', filename)
+    return true
+  }
+
+  const friend = getEventFriend(event)
+  if (typeof friend?.sendFile !== 'function') return false
+  await friend.sendFile(file, filename)
+  return true
+}
 
 /** 制作合并转发，兼容 Miao/icqq 与 TRSS。 */
 export async function makeForwardMsg (event, messages, description = '') {

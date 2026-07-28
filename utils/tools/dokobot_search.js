@@ -1,22 +1,22 @@
 /**
- * 网页搜索工具 — 通过本地 SearXNG 聚合搜索
- * SearXNG 聚合 Google/Bing/DuckDuckGo/Wikipedia 等 10+ 引擎
- * 部署: docker compose -f docker-compose.lite.yaml up -d (localhost:8080)
+ * 网页搜索工具 — 可选 Dokobot 本地浏览器，SearXNG 作为默认/回退链路
  */
-import { CustomTool } from 'lolicon-core'
+import { CustomTool } from '../../core/index.js'
+import { getConfig } from '../state.js'
+import { canUseDokobot, DOKOBOT_SEARCH_ENGINES, searchWithDokobot } from '../dokobot.js'
 
 const SEARXNG = 'http://localhost:8080/search'
 const TIMEOUT_MS = 15000
 const MAX_SNIPPET = 300
 const MAX_RESULTS = 10
 
-class WebSearch extends CustomTool {
+class DokobotSearch extends CustomTool {
 
-  name = 'web_search'
+  name = 'dokobot_search'
 
   function = {
-    name: 'web_search',
-    description: `搜索互联网获取实时信息。返回结果的标题、摘要、链接、来源引擎。
+    name: 'dokobot_search',
+    description: `搜索互联网获取实时信息。启用 Dokobot 时可复用本机浏览器搜索动态页面，否则使用 SearXNG。
 适用场景：查资料、核实事实、获取最新新闻、查询技术文档。
 每次最多${MAX_RESULTS}条，支持翻页。`,
     parameters: {
@@ -29,14 +29,30 @@ class WebSearch extends CustomTool {
         page: {
           type: 'integer',
           description: `页码，默认1，每页${MAX_RESULTS}条`
+        },
+        engine: {
+          type: 'string',
+          enum: Object.keys(DOKOBOT_SEARCH_ENGINES),
+          description: 'Dokobot 本地搜索引擎；未填写时使用面板默认值'
         }
       },
       required: ['keyword']
     }
   }
 
-  async run(args) {
-    const { keyword, page = 1 } = args
+  async run(args, context = {}) {
+    const { keyword, page = 1, engine } = args
+    const access = canUseDokobot(getConfig()?.dokobot, context)
+
+    if (access.allowed) {
+      try {
+        return JSON.stringify(await searchWithDokobot(keyword, access.config, { page, engine }))
+      } catch (err) {
+        if (!access.config.fallback) {
+          return JSON.stringify({ query: keyword, provider: 'dokobot-local', error: `Dokobot 搜索失败: ${err.message}` })
+        }
+      }
+    }
 
     // 1. 构建请求
     const params = new URLSearchParams({
@@ -96,6 +112,7 @@ class WebSearch extends CustomTool {
       const output = {
         query: keyword,
         page,
+        provider: 'searxng',
         total: data.number_of_results ?? formatted.length,
         results: formatted
       }
@@ -132,4 +149,4 @@ class WebSearch extends CustomTool {
   }
 }
 
-export default new WebSearch()
+export default new DokobotSearch()

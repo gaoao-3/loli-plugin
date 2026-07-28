@@ -1,17 +1,27 @@
 {
   "name": "loli-plugin",
   "version": "0.1.0",
-  "description": "日奈的 QQ 机器人插件 — 基于 lolicon-core 引擎",
+  "description": "日奈的 QQ 机器人插件 — 内置 AI 引擎与管理面板",
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@mozilla/readability": "^0.6.0",
+    "chokidar": "^4.0.0",
+    "express": "^4.18.0",
+    "express-fileupload": "^1.4.0",
     "jimp": "^1.6.1",
     "linkedom": "^0.18.12",
-    "lolicon-core": "github:gaoao-3/lolicon-core"
+    "microsandbox": "^0.6.6",
+    "openai": "^4.0.0",
+    "playwright-core": "1.61.0",
+    "uuid": "^10.0.0",
+    "yaml": "2.8.0",
+    "zod": "3.25.76"
   },
   "engines": {
     "node": ">=22"

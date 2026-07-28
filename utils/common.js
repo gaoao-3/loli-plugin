@@ -1,5 +1,4 @@
 import * as crypto from 'node:crypto'
-import fetch from 'node-fetch'
 import { Jimp } from 'jimp'
 
 export function md5 (str) {
@@ -269,9 +268,18 @@ export async function compressImage (buffer, mimeType, options = {}) {
     maxFileSizeKB = 2048
   } = options
 
-  if (!enable || !buffer || buffer.length === 0) {
+  if (!buffer || buffer.length === 0) {
     return { buffer, mimeType }
   }
+
+  // 动图不能走 Jimp → JPEG 的静态压缩，否则动画帧会永久丢失。
+  // 同时以文件签名为准，兼容 QQ CDN 错报 image/jpeg 的情况。
+  const signature = buffer.subarray(0, 6).toString('ascii')
+  if (signature === 'GIF87a' || signature === 'GIF89a') {
+    return { buffer, mimeType: 'image/gif' }
+  }
+
+  if (!enable) return { buffer, mimeType }
 
   try {
     const image = await Jimp.read(buffer)

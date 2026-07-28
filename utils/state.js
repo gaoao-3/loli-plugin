@@ -7,10 +7,20 @@
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { createEngine } from 'lolicon-core'
+import { createEngine } from '../core/index.js'
 import defaultConfig from '../config/config.js'
 import { getMemoryDataDir } from '../memory/options.js'
 import { mergeDetectedMasterIdentities } from './identity.js'
+import {
+  createConfigReloader,
+  mergeDefaults,
+  reconcileChaiteConfigWithEngine,
+  replaceInPlace
+} from './config-watcher.js'
+import { McpManager } from './mcp-manager.js'
+import { SkillManager } from './skill-manager.js'
+import { loadConfigFile, saveConfigFile } from './config-storage.js'
+import { validateConfigShape } from '../core/src/dashboard/config-validation.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const PLUGIN_ROOT = path.dirname(path.dirname(__filename))
@@ -23,6 +33,44 @@ export { PLUGIN_ROOT, DATA_DIR, TOOLS_DIR }
 let engine = null
 let config = null
 let pluginLogger = null
+let mcpManager = null
+let skillManager = null
+let historyCleanupTimer = null
+
+const HISTORY_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+function normalizeHistoryRetentionDays (value) {
+  const days = Number(value)
+  if (!Number.isFinite(days)) return 30
+  return Math.max(0, Math.min(3650, Math.floor(days)))
+}
+
+function runHistoryCleanup () {
+  if (!engine?.storage?.pruneHistory) return
+  const days = normalizeHistoryRetentionDays(config?.llm?.historyRetentionDays)
+  if (days === 0) return
+  const result = engine.storage.pruneHistory(Date.now() - days * 24 * 60 * 60 * 1000)
+  if (result.deleted > 0) {
+    pluginLogger?.info(`[loli] 已清理 ${result.deleted} 条过期模型会话历史，释放 ${(result.bytes / 1024 / 1024).toFixed(1)} MiB`)
+  }
+}
+
+function startHistoryCleanup () {
+  clearInterval(historyCleanupTimer)
+  try {
+    runHistoryCleanup()
+  } catch (err) {
+    pluginLogger?.warn(`[loli] 启动时清理模型会话历史失败: ${err.message}`)
+  }
+  historyCleanupTimer = setInterval(() => {
+    try {
+      runHistoryCleanup()
+    } catch (err) {
+      pluginLogger?.warn(`[loli] 模型会话历史自动清理失败: ${err.message}`)
+    }
+  }, HISTORY_CLEANUP_INTERVAL_MS)
+  historyCleanupTimer.unref?.()
+}
 
 // 运行日志缓冲区（供管理面板查看）
 const logBuffer = []
@@ -51,46 +99,31 @@ function wrapLogger () {
   }
 }
 
-function mergeDefaults (defaults, value) {
-  if (Array.isArray(defaults)) return Array.isArray(value) ? value : [...defaults]
-  if (!defaults || typeof defaults !== 'object') return value === undefined ? defaults : value
-
-  const out = value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {}
-  for (const key of Object.keys(defaults)) {
-    out[key] = mergeDefaults(defaults[key], out[key])
-  }
-  return out
-}
-
 function loadConfig () {
-  if (fs.existsSync(CONFIG_PATH)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        config = mergeDefaults(defaultConfig, parsed)
-      } else {
-        throw new Error('parsed config is not an object')
-      }
-    } catch (err) {
-      console.warn(`[loli] 配置文件 ${CONFIG_PATH} 读取失败，使用默认配置: ${err.message}`)
-      config = JSON.parse(JSON.stringify(defaultConfig))
-      fs.mkdirSync(DATA_DIR, { recursive: true })
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
-    }
-  } else {
-    config = JSON.parse(JSON.stringify(defaultConfig))
-    fs.mkdirSync(DATA_DIR, { recursive: true })
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
-  }
+  const loaded = loadConfigFile(CONFIG_PATH, defaultConfig, {
+    logger: message => console.warn(`[loli] ${message}`),
+    validate: value => validateConfigShape(value, defaultConfig)
+  })
+  config = mergeDefaults(defaultConfig, loaded)
+  validateConfigShape(config, defaultConfig)
   return config
 }
 
-export const saveConfig = () => {
-  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+/** @type {ReturnType<typeof createConfigReloader>|null} 配置热加载器（initPlugin 启动，destroyPlugin 停止） */
+let configReloader = null
+
+export const saveConfig = (nextConfig = config) => {
+  if (!nextConfig || typeof nextConfig !== 'object' || Array.isArray(nextConfig)) {
     console.warn('[loli] saveConfig skipped: config is not loaded')
-    return
+    return false
   }
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
+  validateConfigShape(nextConfig, defaultConfig)
+  // 先完成磁盘提交，再更新共享对象；写入失败时运行时配置保持原样。
+  const serialized = saveConfigFile(CONFIG_PATH, nextConfig)
+  if (nextConfig !== config) replaceInPlace(config, nextConfig)
+  // 对齐热加载基线，自己的写入不会被误判为外部变更
+  configReloader?.markWritten(serialized)
+  return config
 }
 
 export const getEngine = () => engine
@@ -113,25 +146,63 @@ export async function initPlugin () {
   pluginLogger = wrapLogger()
   const l = pluginLogger
 
+  mcpManager = new McpManager({
+    getConfig: () => config?.mcp,
+    logger: (msg) => l.info(msg)
+  })
+  skillManager = new SkillManager({
+    getConfig: () => config?.skills,
+    pluginRoot: PLUGIN_ROOT,
+    logger: (msg) => l.info(msg)
+  })
+
+  // 配置热加载：外部手改 config.json 就地生效，无需重启（面板/进程内保存不受影响）
+  // 回环保护：restore→saveConfig 若仍被反复判为外部变更（典型原因：另一个实例共享同一
+  // data 目录、内存里持旧版渠道/预设，两边互相“恢复”），连续命中即停 watchers 并报警，
+  // 避免双实例乒乓把日志和磁盘刷爆。
+  let restoreHistory = []
+  configReloader = createConfigReloader({
+    configPath: CONFIG_PATH,
+    defaults: defaultConfig,
+    target: config,
+    logger: (msg) => l.info(`[loli] ${msg}`),
+    onReload: async (reloadedConfig) => {
+      if (!reloadedConfig.chaite) reloadedConfig.chaite = {}
+      const restored = await reconcileChaiteConfigWithEngine(engine, reloadedConfig.chaite)
+      if (!restored) return
+      const now = Date.now()
+      restoreHistory = restoreHistory.filter(t => now - t < 60_000)
+      restoreHistory.push(now)
+      if (restoreHistory.length > 3) {
+        l.warn('[loli] config.json 渠道/预设在 1 分钟内被反复改写，疑似有第二个实例共享同一 data 目录（如 SMB 共享/双开）。已停用配置热加载，请只保留一个机器人实例后重启。')
+        await configReloader.stop()
+        return
+      }
+      l.warn('[loli] 检测到 config.json 中的渠道/预设落后，已保留面板持久化版本')
+      saveConfig()
+    }
+  })
+
   engine = new createEngine({
     dataDir: DATA_DIR,
     toolsDir: TOOLS_DIR,
     enableMemory: false,
-    logger: (msg) => l.info(msg)
+    logger: (msg) => l.info(msg),
+    localToolProvider: async (context) => skillManager.getLocalTools(context.availableTools, context),
+    externalToolProvider: async (context) => [
+      ...(await mcpManager.getTools(context)),
+      ...skillManager.getTools(context)
+    ],
+    externalContextProvider: async (context) => skillManager.getCatalogContext(context)
   })
   await engine.init()
+  startHistoryCleanup()
+  await Promise.all([mcpManager.init(), skillManager.init()])
 
-  // 自动注册渠道和预设到存储
-  const chaiteConfig = config.chaite || {}
-  const channels = chaiteConfig.channels || []
-  const presets = chaiteConfig.presets || []
-
-  for (const ch of channels) {
-    await engine.saveChannel(ch)
-  }
-  for (const p of presets) {
-    await engine.savePreset(p)
-  }
+  // 渠道/预设以 data/ch、data/pr 为持久化事实来源；存储为空时才从 config.json 迁移。
+  if (!config.chaite) config.chaite = {}
+  if (await reconcileChaiteConfigWithEngine(engine, config.chaite)) saveConfig()
+  configReloader.start()
 
   // 重启后补处理已入库但尚未完成视觉标签的图片表情。
   try {
@@ -158,7 +229,7 @@ export async function initPlugin () {
   if (config.dashboard?.enable !== false) {
     try {
       if (typeof engine.startDashboard !== 'function') {
-        throw new Error('当前 lolicon-core 不包含管理面板，请先更新 lolicon-core')
+        throw new Error('内置核心不包含管理面板，请更新 loli-plugin')
       }
       await engine.startDashboard({
         config,
@@ -167,6 +238,23 @@ export async function initPlugin () {
         logs: logBuffer,
         logger: (msg) => l.info(msg),
         getBot: () => globalThis.Bot,
+        dokobot: {
+          getStatus: async () => {
+            const { getDokobotStatus } = await import('./dokobot.js')
+            return getDokobotStatus(config.dokobot)
+          }
+        },
+        extensions: {
+          getStatus: async () => ({
+            mcp: mcpManager.getStatus(),
+            skills: skillManager.getStatus()
+          }),
+          reload: async () => {
+            await mcpManager.reload()
+            skillManager.reload()
+            return { mcp: mcpManager.getStatus(), skills: skillManager.getStatus() }
+          }
+        },
         memory: {
           getStats: async () => {
             const { getStats } = await import('../memory/store.js')
@@ -213,6 +301,13 @@ function findBotNickname (userId) {
  * 插件卸载
  */
 export async function destroyPlugin () {
+  clearInterval(historyCleanupTimer)
+  historyCleanupTimer = null
+  await configReloader?.stop()
+  configReloader = null
+  await mcpManager?.destroy()
+  mcpManager = null
+  skillManager = null
   try {
     const { stopScheduler } = await import('../memory/scheduler.js')
     const { closeMemoryStore } = await import('../memory/store.js')

@@ -2,7 +2,6 @@
  * 更新指令 — #loli更新 / #loli强制更新
  */
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
@@ -11,15 +10,11 @@ import { makeForwardMsg } from '../utils/bot.js'
 const execFileAsync = promisify(execFile)
 const PLUGIN_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const UPDATE_TIMEOUT = 60000
-const DEPENDENCY_UPDATE_TIMEOUT = 180000
+const DEPENDENCY_INSTALL_TIMEOUT = 180000
+const RESTART_DELAY = 2000
 const MAX_LOG_COMMITS = 20
 const REPOSITORY_URL = 'https://github.com/gaoao-3/loli-plugin'
-const CORE_REPOSITORY_URL = 'https://github.com/gaoao-3/lolicon-core'
 const GIT_CONFIG = ['-c', 'user.name=loli', '-c', 'user.email=loli@bot']
-const CORE_LOCK_PATHS = [
-  path.join(PLUGIN_ROOT, 'node_modules', '.pnpm', 'lock.yaml'),
-  path.join(PLUGIN_ROOT, 'pnpm-lock.yaml')
-]
 
 let updating = false
 
@@ -58,7 +53,6 @@ export class loliUpdate extends plugin {
     try {
       await checkGit()
       const oldHead = await getHead()
-      const oldCoreRevision = await getCoreRevision()
 
       await e.reply(force
         ? '🔄 正在强制更新 loli-plugin，请稍候...'
@@ -71,28 +65,21 @@ export class loliUpdate extends plugin {
 
       await runGit(['pull', '--no-rebase'])
       const newHead = await getHead()
-      const updatedAt = await getLatestCommitTime()
       const pluginUpdated = oldHead !== newHead
 
-      await e.reply('📦 正在检查并更新 lolicon-core 核心依赖...')
-      let coreUpdate
-      try {
-        coreUpdate = await updateCoreDependency(oldCoreRevision)
-      } catch (coreError) {
-        const pluginStatus = pluginUpdated
-          ? `loli-plugin 已更新至 ${shortHead(newHead)}`
-          : 'loli-plugin 已是最新版'
-        throw new Error(`${pluginStatus}，但 lolicon-core 更新失败：${formatError(coreError)}`)
-      }
-
-      if (!pluginUpdated && !coreUpdate.updated) {
+      if (!pluginUpdated) {
+        const updatedAt = await getLatestCommitTime()
         return e.reply([
-          '✅ loli-plugin 与 lolicon-core 均已完成检查',
+          '✅ loli-plugin 已完成检查',
           `loli-plugin：已是最新版 ${shortHead(newHead)}`,
-          `lolicon-core：${formatCoreStatus(coreUpdate)}`,
+          '内置核心与管理面板：随插件保持一致',
           `最后更新：${updatedAt}`
         ].join('\n'))
       }
+
+      await e.reply('📦 正在同步插件与内置核心所需依赖...')
+      await syncDependencies()
+      const updatedAt = await getLatestCommitTime()
 
       let commits = []
       let totalCount = 0
@@ -119,17 +106,20 @@ export class loliUpdate extends plugin {
         updatedAt,
         commits,
         totalCount,
-        pluginUpdated,
-        coreUpdate
+        pluginUpdated
       })
-      const title = buildUpdateTitle({ pluginUpdated, coreUpdated: coreUpdate.updated, totalCount })
+      const title = buildUpdateTitle({ totalCount })
 
       try {
         const forward = await makeForwardMsg(e, nodes, title)
-        return await e.reply(forward)
+        const result = await e.reply(forward)
+        scheduleRestart(e)
+        return result
       } catch (forwardError) {
         globalThis.logger?.warn?.(`[loli] 更新成功，但合并转发构建失败：${forwardError.message}`)
-        return e.reply([title, ...nodes].join('\n\n'))
+        const result = await e.reply([title, ...nodes].join('\n\n'))
+        scheduleRestart(e)
+        return result
       }
     } catch (error) {
       return e.reply(`❌ 更新失败：${formatError(error)}`)
@@ -137,6 +127,25 @@ export class loliUpdate extends plugin {
       updating = false
     }
   }
+}
+
+export function scheduleRestart (e, delay = RESTART_DELAY) {
+  const timer = setTimeout(() => {
+    restartBot(e).catch(async error => {
+      globalThis.logger?.error?.(`[loli] 更新完成后自动重启失败：${formatError(error)}`)
+      try {
+        await e.reply('⚠️ 更新已完成，但自动重启失败，请发送 #重启 手动应用更新。')
+      } catch {}
+    })
+  }, Math.max(0, Number(delay) || 0))
+  timer.unref?.()
+  return timer
+}
+
+async function restartBot (e) {
+  const { Restart } = await import('../../other/restart.js')
+  if (typeof Restart !== 'function') throw new Error('当前运行环境未提供 Restart')
+  return new Restart(e).restart()
 }
 
 export function parseUpdateLog (output) {
@@ -162,17 +171,17 @@ export function buildUpdateForwardNodes ({
   updatedAt = '',
   commits = [],
   totalCount = commits.length,
-  pluginUpdated = oldHead !== newHead,
-  coreUpdate = {}
+  pluginUpdated = oldHead !== newHead
 } = {}) {
   const nodes = [
     [
-      '✅ 插件与核心依赖更新完成',
+      '✅ 插件、内置核心与管理面板更新完成',
       `更新方式：${force ? '强制更新' : '普通更新'}`,
       `loli-plugin：${pluginUpdated ? `${shortHead(oldHead)} → ${shortHead(newHead)}` : `已是最新版 ${shortHead(newHead)}`}`,
-      `lolicon-core：${formatCoreStatus(coreUpdate)}`,
+      '核心形态：插件内置，版本与插件一致',
       `最后更新：${updatedAt || '未知'}`,
-      `插件新增提交：${totalCount} 个`
+      `插件新增提交：${totalCount} 个`,
+      '将在 2 秒后自动重启以应用更新'
     ].join('\n')
   ]
 
@@ -187,26 +196,8 @@ export function buildUpdateForwardNodes ({
     nodes.push(`其余 ${totalCount - commits.length} 个提交未展开，请前往 GitHub 查看完整记录。`)
   }
 
-  const links = []
-  if (pluginUpdated) links.push(`loli-plugin：${REPOSITORY_URL}/commits/main`)
-  links.push(`lolicon-core：${CORE_REPOSITORY_URL}/commits/main`)
-  nodes.push(`🔗 完整更新记录\n${links.join('\n')}`)
+  nodes.push(`🔗 完整更新记录\n${REPOSITORY_URL}/commits/main`)
   return nodes
-}
-
-export function parseCoreRevision (lockfile) {
-  return String(lockfile || '')
-    .match(/https:\/\/codeload\.github\.com\/gaoao-3\/lolicon-core\/tar\.gz\/([a-f0-9]{40})/i)?.[1] || ''
-}
-
-export function parseInstalledCoreRevision (output) {
-  try {
-    const projects = JSON.parse(String(output || '[]'))
-    const resolved = projects?.[0]?.dependencies?.['lolicon-core']?.resolved || ''
-    return parseCoreRevision(resolved)
-  } catch {
-    return ''
-  }
 }
 
 async function runGit (args) {
@@ -224,7 +215,7 @@ async function runPnpm (args) {
     cwd: PLUGIN_ROOT,
     encoding: 'utf8',
     windowsHide: true,
-    timeout: DEPENDENCY_UPDATE_TIMEOUT,
+    timeout: DEPENDENCY_INSTALL_TIMEOUT,
     maxBuffer: 2 * 1024 * 1024
   }
 
@@ -248,51 +239,20 @@ async function checkGit () {
   }
 }
 
-async function checkPnpm () {
+async function syncDependencies () {
   try {
     await runPnpm(['--version'])
   } catch {
-    throw new Error('未检测到 pnpm，无法更新 lolicon-core 核心依赖。')
+    throw new Error('插件已拉取更新，但未检测到 pnpm，无法同步依赖。')
   }
-}
-
-async function updateCoreDependency (beforeRevision = '') {
-  await checkPnpm()
-  if (!beforeRevision) beforeRevision = await getInstalledCoreRevision()
 
   await runPnpm([
-    'update',
-    'lolicon-core',
-    '--lockfile=false',
-    '--no-save',
+    'install',
+    '--ignore-workspace',
+    '--frozen-lockfile',
+    '--ignore-scripts',
     '--reporter=append-only'
   ])
-  const afterRevision = await getInstalledCoreRevision() || await getCoreRevision()
-  return {
-    beforeRevision,
-    afterRevision,
-    updated: Boolean(beforeRevision && afterRevision && beforeRevision !== afterRevision),
-    refreshed: true
-  }
-}
-
-async function getInstalledCoreRevision () {
-  try {
-    const result = await runPnpm(['list', 'lolicon-core', '--depth=0', '--json'])
-    return parseInstalledCoreRevision(result.stdout)
-  } catch {
-    return ''
-  }
-}
-
-async function getCoreRevision () {
-  for (const lockPath of CORE_LOCK_PATHS) {
-    try {
-      const revision = parseCoreRevision(await readFile(lockPath, 'utf8'))
-      if (revision) return revision
-    } catch {}
-  }
-  return ''
 }
 
 async function getHead () {
@@ -314,16 +274,8 @@ function shortHead (head) {
   return String(head || '未知').slice(0, 7)
 }
 
-function formatCoreStatus ({ beforeRevision = '', afterRevision = '', updated = false, refreshed = false } = {}) {
-  if (updated) return `${shortHead(beforeRevision)} → ${shortHead(afterRevision)}`
-  if (afterRevision) return `已是最新版 ${shortHead(afterRevision)}`
-  return refreshed ? '依赖刷新完成' : '未检查'
-}
-
-function buildUpdateTitle ({ pluginUpdated, coreUpdated, totalCount }) {
-  if (pluginUpdated && coreUpdated) return `🚀 loli-plugin 与 lolicon-core 更新完成 · ${totalCount} 个插件提交`
-  if (pluginUpdated) return `🚀 loli-plugin 更新日志 · ${totalCount} 个提交`
-  return '📦 lolicon-core 更新完成'
+function buildUpdateTitle ({ totalCount }) {
+  return `🚀 loli-plugin 更新日志 · ${totalCount} 个提交`
 }
 
 function formatError (error) {

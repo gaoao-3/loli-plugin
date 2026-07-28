@@ -5,6 +5,7 @@ import { addMessage } from './store.js'
 import { resolveEventIdentity, stripIdentityPrompt } from '../utils/identity.js'
 import { isGroupEvent } from '../utils/bot.js'
 import { recordGroupIdentity } from './identity.js'
+import { removeInternalMemoryPlaceholder } from './internal.js'
 
 /**
  * 采集一条对话
@@ -21,12 +22,11 @@ export function collect ({ baseDir, event, userText, assistantText, assistantIde
 
   const memoryConfig = config?.memory || {}
   const groupConfig = memoryConfig.group || {}
-  const userConfig = memoryConfig.user || {}
   const groupId = isGroupEvent(event) ? String(event.group_id || event.group?.group_id || event.group?.gid) : null
   const identity = resolveEventIdentity(event, config)
   const userId = identity.userId
   const nickname = identity.displayName || userId
-  const cleanUserText = stripIdentityPrompt(userText)
+  const cleanUserText = removeInternalMemoryPlaceholder(stripIdentityPrompt(userText))
   const createdAt = resolveEventTime(event)
   const messageKey = resolveMessageKey(event, userId, cleanUserText, createdAt)
   const identityFields = {
@@ -79,38 +79,6 @@ export function collect ({ baseDir, event, userText, assistantText, assistantIde
     }
   }
 
-  if (userId && userConfig.enable !== false) {
-    const userScope = groupId ? 'group_user' : 'private_user'
-    const userTargetId = groupId ? `${groupId}:${userId}` : userId
-    if (cleanUserText) {
-      addMessage(baseDir, {
-        scope: userScope,
-        targetId: userTargetId,
-        groupId,
-        userId,
-        nickname,
-        role: 'user',
-        text: cleanUserText,
-        messageKey,
-        ...identityFields,
-        createdAt
-      })
-    }
-    if (assistantText) {
-      addMessage(baseDir, {
-        scope: userScope,
-        targetId: userTargetId,
-        groupId,
-        userId: assistant.userId || null,
-        nickname: assistant.displayName,
-        ...assistantFields,
-        role: 'assistant',
-        text: assistantText,
-        messageKey: `assistant:${messageKey}`,
-        createdAt
-      })
-    }
-  }
 }
 
 function normalizeAssistantIdentity (identity) {
@@ -125,7 +93,7 @@ function normalizeAssistantIdentity (identity) {
 
 /**
  * 旁听群消息：只写入群级原始记忆，不把未触发机器人的闲聊写进个人对话记忆。
- * 后续摘要、历史检索和群风格学习共用这份去重后的消息流。
+ * 群风格与群友自主记忆共用这份去重后的消息流。
  */
 export function collectAmbientGroupMessage ({ baseDir, event, userText, config }) {
   if (!baseDir || !event || !isGroupEvent(event)) return false
@@ -137,7 +105,7 @@ export function collectAmbientGroupMessage ({ baseDir, event, userText, config }
   if (enabledGroups.length > 0 && !enabledGroups.includes(groupId)) return false
 
   const identity = resolveEventIdentity(event, config)
-  const cleanUserText = stripIdentityPrompt(userText)
+  const cleanUserText = removeInternalMemoryPlaceholder(stripIdentityPrompt(userText))
   if (!identity.userId) return false
   const createdAt = resolveEventTime(event)
   recordGroupIdentity({ baseDir, groupId, identity, observedAt: createdAt })

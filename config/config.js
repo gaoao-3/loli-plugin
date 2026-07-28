@@ -18,23 +18,27 @@ export default {
           /** 是否把模型 API 响应写入运行日志 */
           logApiResponses: true,
           /** 单条响应日志最大字符数 */
-          apiResponseLogMaxLength: 4000
+          apiResponseLogMaxLength: 4000,
+          /** 单次用户请求的工具调用循环轮数 */
+          maxToolRounds: 10,
+          /** 单次用户请求中同一工具最多调用次数 */
+          maxSameToolCalls: 5
         },
         status: 'enabled'
       },
       {
-        id: 'antigravity',
-        name: 'Antigravity Tools',
+        id: 'cpa',
+        name: 'CPA',
         adapterType: 'gemini',
         models: [],
         options: {
-          providerType: 'antigravity',
-          protocol: 'gemini',
-          apiKey: '',
-          baseUrl: 'http://127.0.0.1:8045',
+          apiKey: 'YOUR_CPA_API_KEY',
+          baseUrl: 'http://127.0.0.1:48370',
           safetyLevel: 'default',
           logApiResponses: true,
-          apiResponseLogMaxLength: 4000
+          apiResponseLogMaxLength: 4000,
+          maxToolRounds: 10,
+          maxSameToolCalls: 5
         },
         status: 'disabled'
       }
@@ -112,6 +116,21 @@ export default {
       /** @type {string} AI 对主人的特别称呼，留空则使用昵称或沿用预设人设 */
       appellation: ''
     },
+    /** @type {Object} 群管自治：机器人只能处罚当前消息发送者 */
+    groupModeration: {
+      /** 是否允许机器人自主撤回、禁言及基于累计违规发起踢人请求 */
+      botAutonomy: true,
+      /** 自主禁言开关 */
+      allowMute: true,
+      /** 自主撤回开关 */
+      allowRecall: true,
+      /** 自主修改当前消息发送者群名片的开关 */
+      allowRename: true,
+      /** 加权违规分累计达到该值后，机器人才能发起踢人请求 */
+      kickViolationPoints: 10,
+      /** 违规累计窗口天数 */
+      violationWindowDays: 7
+    },
     // ── 会话与冷却 ──────────────────────────
     /** @type {number} 会话复用窗口 (毫秒)，同一用户在此时间内共享对话上下文 */
     sessionWindow: 300000,
@@ -164,15 +183,14 @@ export default {
 
   /** @type {Object} 记忆系统 */
   memory: {
-    /** @type {{ enable: boolean, enabledGroups: string[], extractionModel: string, channelId: string }} */
-    group: { enable: true, enabledGroups: [], extractionModel: 'gemini-2.5-flash', channelId: 'gemini' },
-    /** @type {{ enable: boolean, extractionModel: string, channelId: string }} */
-    user: { enable: true, extractionModel: 'gemini-2.5-flash', channelId: 'gemini' },
-    /** @type {Object} Hermes 风格的客观群文化与角色主观记忆自学习 */
+    /** @type {{ enable: boolean, enabledGroups: string[] }} 原始群消息证据采集范围 */
+    group: { enable: true, enabledGroups: [] },
+    /** @type {Object} AI 自主维护的群风格；用户印象由 memberLearning 按 QQ 独立维护 */
     groupLearning: {
       enable: true,
-      /** 主观记忆使用的角色预设；留空使用 loli.defaultPreset */
-      perspectivePresetId: '',
+      /** 使用稳定的 Gemini 渠道输出完整群风格快照 */
+      channelId: 'gemini',
+      model: 'gemini-3.1-flash-lite-preview',
       /** 首次形成群风格所需的有效消息数 */
       minMessages: 100,
       /** 已有设定后，每新增多少条有效消息复审一次 */
@@ -190,34 +208,39 @@ export default {
       /** 自动采纳与提示词注入的最低置信度 */
       autoApplyMinConfidence: 0.72,
       injectMinConfidence: 0.7,
-      /** 两类常驻记忆各自的容量边界 */
-      groupProfileCharLimit: 1500,
-      groupMemoryCharLimit: 1500,
-      maxEntriesPerStore: 12,
+      /** 群风格只保留少量可执行短句；不再维护重复的群级主观记忆 */
+      groupProfileCharLimit: 600,
+      maxEntriesPerStore: 6,
       /** 后台请求失败后的重试冷却 */
       retryCooldownMs: 300000
     },
-    /** @type {string} */
-    refinementModel: 'gemini-2.5-flash',
-    /** @type {string} */
-    refinementChannelId: 'gemini',
+    /** 当前 QQ 的自主用户印象：直接审查原始消息，不生成每日摘要或长期画像 */
+    memberLearning: {
+      enable: true,
+      /** 首次形成记忆所需的该群友有效消息数 */
+      minMessages: 12,
+      /** 已有记忆后，每新增多少条有效消息复审一次 */
+      updateEveryMessages: 8,
+      /** 只审查最近多少天的原始消息 */
+      windowDays: 30,
+      /** 单次审查最多读取的该群友消息数 */
+      reviewMaxMessages: 50,
+      /** 结构化状态容量 */
+      maxStyleEntries: 3,
+      maxMemoryEntries: 10,
+      styleCharLimit: 360,
+      memoryCharLimit: 1400,
+      autoApplyMinConfidence: 0.72,
+      injectMinConfidence: 0.68,
+      retryCooldownMs: 300000,
+      /** 使用稳定的 Gemini 渠道执行严格 JSON 审查 */
+      channelId: 'gemini',
+      model: 'gemini-3.1-flash-lite-preview'
+    },
     /** @type {string} SQLite 记忆目录 */
     dataDir: 'data/memory/md',
-    /** @type {number} 原始消息保留天数 */
-    messageRetentionDays: 30,
-    /** @type {number} 摘要保留天数；长期事实由画像承接 */
-    summaryRetentionDays: 30,
-    /** @type {Object} 语义检索 */
-    embedding: {
-      enable: true,
-      provider: 'gemini',
-      channelId: 'gemini',
-      model: 'gemini-embedding-2',
-      outputDimensionality: 768,
-      topK: 8,
-      minScore: 0.2,
-      batchSize: 8
-    }
+    /** @type {number} 尚未被群风格和用户印象双方消费的原始证据最长保留天数 */
+    messageRetentionDays: 30
   },
 
   /** QQ 收藏表情与 AI 自主表情工具 */
@@ -225,7 +248,7 @@ export default {
     enable: true,
     /** 自动收录主人直接发送的小黄脸、超级表情和收藏表情 */
     autoCollectMaster: true,
-    /** 动画/图片表情入库后由当前视觉模型异步生成情绪和场景标签 */
+    /** 动画/图片表情入库后由当前视觉模型异步生成核心意图、风格、场景和风险标签 */
     autoClassify: true,
     /** 留空时沿用默认角色的渠道与模型 */
     classificationPresetId: '',
@@ -239,8 +262,56 @@ export default {
     cooldownMs: 60000
   },
 
+  /** QQ 消息表情回应与戳一戳轻互动 */
+  interactions: {
+    enable: true,
+    reaction: {
+      /** 每轮向模型开放消息表情回应的概率 */
+      enable: true,
+      probability: 0.25,
+      /** 同一群、同一用户添加消息回应的最短间隔 */
+      cooldownMs: 45000
+    },
+    poke: {
+      /** 仅对“用户先戳机器人”做概率回戳，不允许模型主动戳陌生人 */
+      enable: true,
+      returnProbability: 0.35,
+      cooldownMs: 300000,
+      dailyUserLimit: 3
+    }
+  },
+
   /** @type {Object} 群聊上下文模板（getGroupContextPrompt 使用） */
   llm: {
+    /** 模型会话 JSON 自动保留天数；0 表示不自动清理 */
+    historyRetentionDays: 30,
+    /** 每轮对话重发给模型的历史消息条数上限（工具循环内为 2 倍） */
+    historyMaxMessages: 50,
+    /** @type {Object} 会话历史自动压缩（滚动摘要） */
+    historyCompress: {
+      /** @type {boolean} 是否启用 */
+      enable: true,
+      /** 压缩任务独立使用的渠道与模型 */
+      channelId: 'gemini',
+      model: 'gemini-2.5-flash',
+      /** 会话原始消息超过该条数时触发压缩 */
+      triggerMessages: 60,
+      /** 压缩时保留最近多少条原文 */
+      keepRecent: 20,
+      /** 单次最多压缩多少条（小步增量，摘要质量更稳） */
+      batchSize: 20,
+      /** 摘要硬截断长度（prompt 里的 400 字只是软约束） */
+      maxSummaryChars: 1500,
+      /** 压缩失败后的重试冷却毫秒 */
+      retryCooldownMs: 300000
+    },
+    /** 群聊正文的内联定位信息：保留顺序、消息 ID、QQ、媒体、引用与当前消息位置 */
+    groupTimeline: {
+      enable: true,
+      /** 旧版独立时间轴兼容字段；合并上下文的条数由 loli.contextLength 决定 */
+      maxChars: 3000,
+      includeCurrent: true
+    },
     /**
      * 上下文头部模板。占位符：
      *   ${group.group_id}  群号
@@ -270,6 +341,96 @@ export default {
   update: {
     gitMirror: '',
     retryCount: 3
+  },
+
+  /** @type {Object} Dokobot 本地浏览器搜索/网页读取 */
+  dokobot: {
+    /** @type {boolean} 是否优先用 Dokobot Bridge 执行 dokobot_search/dokobot_read */
+    enable: false,
+    /** @type {string} Dokobot CLI 命令或绝对路径 */
+    cliPath: 'dokobot',
+    /** @type {boolean} 仅机器人主人可调用本机浏览器（可能携带登录态） */
+    masterOnly: true,
+    /** @type {boolean} Dokobot 失败时回退到 SearXNG/直接抓取 */
+    fallback: true,
+    /** @type {'google'|'bing'|'duckduckgo'|'baidu'|'sogou'} 默认搜索引擎 */
+    searchEngine: 'google',
+    /** @type {number} 单次 CLI/浏览器操作超时（秒） */
+    timeoutSeconds: 60,
+    /** @type {number} 默认滚动读取屏数 */
+    screens: 3,
+    /** @type {number} 返回给模型的最大文本字符数 */
+    maxTextChars: 12000,
+    /** @type {boolean} 尝试复用已有浏览器标签页 */
+    reuseTab: false,
+    /** @type {boolean} 是否允许访问 localhost/私网地址 */
+    allowPrivateNetwork: false,
+    /** @type {string[]} 允许 Dokobot 访问的域名；空数组表示不额外限制公网域名 */
+    allowedDomains: []
+  },
+
+  /** MCP 外部工具服务器 */
+  mcp: {
+    enable: false,
+    connectTimeoutMs: 10000,
+    callTimeoutMs: 60000,
+    /** transport: stdio | streamable-http */
+    servers: []
+  },
+
+  /** Agent Skills（SKILL.md 渐进加载） */
+  skills: {
+    enable: false,
+    /** true 时仅机器人主人可查看和激活 Skills */
+    masterOnly: false,
+    /** 相对路径以插件根目录为基准 */
+    directories: ['skills'],
+    /** 禁用的 Skill name */
+    disabled: []
+  },
+
+  /** @type {Object} 代码沙盒（run_code 工具，Microsandbox microVM） */
+  sandbox: {
+    /** @type {boolean} 是否启用 */
+    enable: false,
+    /** @type {boolean} 仅机器人主人可用（防止群友提示词注入滥用） */
+    masterOnly: true,
+    /** @type {boolean} QQ 消息文件自动进沙盒（inputs/）且 outputs/ 产物自动回发 QQ */
+    mediaIO: true,
+    /** @type {boolean} 每次代码执行后用合并转发展示代码、输出与产物信息 */
+    executionReport: true,
+    /** @type {boolean} 启用 browser_use 无头浏览器工具 */
+    browserEnable: true,
+    /** @type {string} 默认语言 python/javascript/typescript/java/go/bash */
+    defaultLanguage: 'python',
+    /** @type {string} Microsandbox 的 Python OCI 镜像 */
+    microsandboxImage: 'python:3.14-slim',
+    /** @type {string[]} 首次使用时在 microVM 内安装并缓存为快照的 Python 依赖 */
+    pythonDependencies: [],
+    /** @type {number} 首次构建 Python 依赖快照时 pip 安装超时（秒） */
+    dependencyInstallTimeoutSeconds: 900,
+    /** @type {number} Python 依赖快照构建沙盒最长存活时间（秒） */
+    dependencySnapshotTimeoutSeconds: 1200,
+    /** @type {number} Microsandbox microVM 内存（MiB） */
+    microsandboxMemoryMiB: 512,
+    /** @type {number} Microsandbox microVM vCPU 数 */
+    microsandboxCpus: 1,
+    /** @type {string} Playwright 官方浏览器 OCI 镜像（须与 playwright-core 版本一致） */
+    microsandboxBrowserImage: 'mcr.microsoft.com/playwright:v1.61.0-noble',
+    /** @type {number} 浏览器 microVM 内存（MiB） */
+    browserMemoryMiB: 1024,
+    /** @type {number} 浏览器 microVM vCPU 数 */
+    browserCpus: 2,
+    /** @type {number} 浏览器页面与动作超时（秒） */
+    browserTimeoutSeconds: 45,
+    /** @type {boolean} 是否忽略网页 HTTPS 证书错误 */
+    browserIgnoreHTTPSErrors: false,
+    /** @type {boolean} Microsandbox 是否允许受策略保护的公网访问；false 为完全断网 */
+    microsandboxNetwork: true,
+    /** @type {number} 单次执行超时（秒） */
+    requestTimeoutSeconds: 120,
+    /** @type {number} microVM 最长存活时间（秒） */
+    sandboxTimeoutSeconds: 300
   },
 
   /** @type {Object} 管理面板 */

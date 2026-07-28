@@ -2,6 +2,7 @@ import { getConfig, getEngine } from './state.js'
 import { getGroupHistory } from './group.js'
 import { getSelfId, makeForwardMsg, makeImageSegment, makeRecordSegment, normalizeSegment } from './bot.js'
 import { formatIdentityPrompt, resolveDetailedEventIdentity } from './identity.js'
+import { normalizeGroupMessage, normalizeTimestampSec } from './group-message.js'
 import {
   formatOneBotSegmentText,
   formatRawMessage,
@@ -69,20 +70,21 @@ export async function collectHistoryImages (e, options = {}) {
 
       const chat = chats[i]
       if (!chat) continue
-
-      const senderId = String(chat.sender?.user_id || '')
+      const messageRef = normalizeGroupMessage(chat, { source: 'history', event: e })
+      const senderId = messageRef.sender.id
       if (!senderId || senderId === selfId || senderId === '0') continue
 
-      const chatTime = chat.time || 0
+      const chatTime = messageRef.timestampSec
       if (nowSec - chatTime > maxAgeSeconds) continue
 
-      for (const rawSeg of chat.message || []) {
-        const seg = normalizeSegment(rawSeg)
+      // 最近优先选取；最终整体 reverse 后仍保持同一消息内的原始媒体顺序。
+      for (const media of [...messageRef.media].reverse()) {
         if (images.length >= maxImages) break
-        if (seg.type !== 'image' || !seg.url) continue
+        const url = media.urlCandidates[0]
+        if (media.type !== 'image' || !url) continue
 
         try {
-          const compressed = await fetchAndCompressImage(seg.url, {
+          const compressed = await fetchAndCompressImage(url, {
             timeoutMs: 15000,
             retries: 1,
             imageCompress
@@ -92,7 +94,18 @@ export async function collectHistoryImages (e, options = {}) {
             type: 'image',
             image: compressed.buffer.toString('base64'),
             mimeType: compressed.mimeType,
-            senderName: chat.sender?.card || chat.sender?.nickname || senderId,
+            sandboxResource: {
+              source: 'history',
+              senderId,
+              senderName: messageRef.sender.name,
+              time: chatTime,
+              messageId: messageRef.messageId,
+              mediaIndex: media.mediaIndex,
+              typeIndex: media.typeIndex,
+              mediaType: media.type,
+              fileId: media.fileId || null
+            },
+            senderName: messageRef.sender.name,
             senderId,
             time: chatTime
           })
@@ -133,14 +146,23 @@ export function mergeHistoryImagesIntoUserMessage (userMessage, historyImages) {
   })
 
   for (const img of historyImages) {
+    const senderLabel = img.senderId
+      ? `${img.senderName || img.senderId}（QQ:${img.senderId}）`
+      : (img.senderName || '未知群友')
     newContent.push({
       type: 'text',
-      text: `【${img.senderName} 发送的图片】`
+      text: `【${senderLabel}发送的图片】`
     })
     newContent.push({
       type: 'image',
       image: img.image,
-      mimeType: img.mimeType
+      mimeType: img.mimeType,
+      sandboxResource: img.sandboxResource || {
+        source: 'history',
+        senderId: img.senderId,
+        senderName: img.senderName,
+        time: img.time
+      }
     })
   }
 
@@ -176,23 +198,30 @@ async function _extractReplyContext (e, options = {}) {
 
   let seq = e.isGroup ? (e.source?.seq || e.reply_id) : (e.source?.time || e.source?.time)
   let reply
+  let replyMeta
   if (e.getReply && typeof e.getReply === 'function') {
     const quoted = await e.getReply()
     reply = quoted?.message || quoted?.data?.message
+    replyMeta = quoted?.data || quoted
   } else {
     const history = e.isGroup
       ? await e.group?.getChatHistory?.(seq, 1)
       : await e.friend?.getChatHistory?.(seq, 1)
     const list = Array.isArray(history) ? history : history?.messages || history?.data?.messages || []
-    reply = list.at?.(-1)?.message
+    replyMeta = list.at?.(-1)
+    reply = replyMeta?.message
   }
 
   if (!reply) return { text, imageContents }
 
   const quotedTexts = []
+  let replyMediaIndex = 0
+  let replyImageIndex = 0
   for (const rawVal of reply) {
     const val = normalizeSegment(rawVal)
+    if (['image', 'flash', 'video', 'record', 'file'].includes(val.type)) replyMediaIndex++
     if (val.type === 'image' && handleReplyImage && val.url) {
+      replyImageIndex++
       try {
         const compressed = await fetchAndCompressImage(val.url, {
           timeoutMs: 15000,
@@ -202,7 +231,17 @@ async function _extractReplyContext (e, options = {}) {
         imageContents.push({
           type: 'image',
           image: compressed.buffer.toString('base64'),
-          mimeType: compressed.mimeType
+          mimeType: compressed.mimeType,
+          sandboxResource: {
+            source: 'quoted',
+            senderId: String(replyMeta?.sender?.user_id || replyMeta?.user_id || ''),
+            senderName: replyMeta?.sender?.card || replyMeta?.sender?.nickname || '',
+            time: normalizeTimestampSec(replyMeta?.time),
+            messageId: String(replyMeta?.message_id || replyMeta?.messageId || replyMeta?.seq || e.source?.seq || e.reply_id || ''),
+            mediaIndex: replyMediaIndex,
+            typeIndex: replyImageIndex,
+            mediaType: 'image'
+          }
         })
       } catch (err) {
         logger.warn(`fetch reply image failed: ${err.message}`)
@@ -303,10 +342,13 @@ export async function intoUserMessage (e, options = {}) {
   }
 
   // 处理图片（使用共享的 fetchAndCompressImage）
-  for (const element of (e.message || []).map(normalizeSegment).filter(el => el.type === 'image')) {
-    if (!element.url) continue
+  const currentRef = normalizeGroupMessage(e, { source: 'current', event: e })
+  for (const media of currentRef.media.filter(item => item.type === 'image')) {
+    const element = media.segment
+    const imageUrl = media.urlCandidates[0]
+    if (!imageUrl) continue
     try {
-      const compressed = await fetchAndCompressImage(element.url, {
+      const compressed = await fetchAndCompressImage(imageUrl, {
         timeoutMs: 15000,
         retries: 1,
         imageCompress
@@ -314,7 +356,18 @@ export async function intoUserMessage (e, options = {}) {
       contents.push({
         type: 'image',
         image: compressed.buffer.toString('base64'),
-        mimeType: compressed.mimeType
+        mimeType: compressed.mimeType,
+        sandboxResource: {
+          source: 'current',
+          senderId: String(e.user_id || e.sender?.user_id || ''),
+          senderName: e.sender?.card || e.sender?.nickname || e.nickname || '',
+          time: normalizeTimestampSec(e.time || Date.now()),
+          messageId: currentRef.messageId,
+          mediaIndex: media.mediaIndex,
+          typeIndex: media.typeIndex,
+          mediaType: media.type,
+          fileId: media.fileId || null
+        }
       })
     } catch (err) {
       logger.warn(`fetch image failed: ${err.message}`)

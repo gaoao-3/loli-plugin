@@ -13,10 +13,6 @@ export function getMessageRetentionDays (config) {
   return positiveNumber(config?.memory?.messageRetentionDays, 30)
 }
 
-export function getSummaryRetentionDays (config) {
-  return positiveNumber(config?.memory?.summaryRetentionDays, 30)
-}
-
 function positiveNumber (value, fallback) {
   const number = Number(value)
   return Number.isFinite(number) && number >= 1 ? number : fallback

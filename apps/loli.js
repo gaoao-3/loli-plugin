@@ -1,6 +1,6 @@
 /**
  * 伪人模式 — 日奈的核心对话逻辑
- * 适配 lolicon-core 引擎
+ * 使用插件内置 AI 引擎
  */
 import { getEngine, getConfig, saveConfig, DATA_DIR, initPlugin, destroyPlugin } from '../utils/state.js'
 import { addInteractionHint, intoUserMessage, toYunzai, extractTextFromUserMessage, formatSegmentToText, collectHistoryImages, mergeHistoryImagesIntoUserMessage } from '../utils/message.js'
@@ -9,11 +9,14 @@ import { getGroupContextPrompt, getGroupHistory } from '../utils/group.js'
 import { formatTimeToBeiJing } from '../utils/common.js'
 import { REPLY_SPLIT_MARKER, sendReplyChunks, splitReplyText } from '../utils/reply.js'
 import { captureEventMasterIdentity, resolveEventIdentity, stripIdentityPrompt } from '../utils/identity.js'
-import { buildMemoryPrompt } from '../memory/prompt.js'
 import { collect } from '../memory/collector.js'
 import { buildGroupLearningPrompt, observeGroupMessage } from '../memory/group-learning.js'
+import { buildGroupMemberMemoryPrompt } from '../memory/member-memory.js'
+import { maybeCompressHistory } from '../utils/history-compress.js'
+import { ConversationExecutionLock } from '../utils/conversation-lock.js'
 import { resolveMemoryBaseDir } from '../memory/options.js'
 import { buildIdentityAwarenessPrompt, recordGroupIdentity } from '../memory/identity.js'
+import { buildProactiveSystemDirective, hasMeaningfulProactiveEvent, hasMeaningfulUserMessage } from '../utils/proactive.js'
 import {
   autoCollectMasterStickers,
   buildStickerDirectivePrompt,
@@ -27,6 +30,13 @@ import {
   shouldAutoSendSticker
 } from '../utils/stickers.js'
 import { enqueueStickerClassifications } from '../utils/sticker-classifier.js'
+import {
+  buildReactionDirectivePrompt,
+  canReactToMessage,
+  extractInteractionDirectives,
+  reactToMessage,
+  shouldOfferReaction
+} from '../utils/interactions.js'
 import { randomUUID } from 'crypto'
 import path from 'path'
 
@@ -36,6 +46,8 @@ import path from 'path'
 
 /** 会话缓存: conversationKey → { convId, lastTs, burstCount } */
 const sessionCache = new Map()
+/** 同一模型 conversation 同时只允许一个请求，避免工具历史交叉和重复 token 消耗。 */
+const conversationExecutionLock = new ConversationExecutionLock()
 
 /** 冷却追踪: user → lastReplyTs / group → lastReplyTs */
 const cooldowns = {
@@ -248,7 +260,7 @@ export class loli extends plugin {
       if (kw) return { type: 'keyword', hitKeyword: kw }
     }
 
-    if (cfg.enableProactiveTrigger && Math.random() <= (cfg.promptProbability || 0)) {
+    if (cfg.enableProactiveTrigger && hasMeaningfulProactiveEvent(e) && Math.random() <= (cfg.promptProbability || 0)) {
       return { type: 'proactive' }
     }
 
@@ -278,7 +290,7 @@ export class loli extends plugin {
 
     if (!_isChatAllowed(cfg, uid, gid)) return false
 
-    // 旁听合格群消息：让摘要与群风格学习覆盖真实群聊，而不只覆盖触发机器人的消息。
+    // 旁听合格群消息：让群风格与群友记忆学习覆盖真实群聊，而不只覆盖触发机器人的消息。
     if (cfg.enable && inGroup) {
       observeGroupMessage({
         baseDir: _resolveMemoryBaseDir(),
@@ -294,17 +306,34 @@ export class loli extends plugin {
     logger.info(_formatTriggerLog(trigger, uid, gid))
 
     const conversationKey = _getConversationKey(cfg, uid, gid)
-    return this._handleLoli(e, {
-      engine,
-      cfg,
-      chaiteConfig,
-      uid,
-      gid,
-      inGroup,
-      selfId,
-      trigger,
-      conversationKey
-    })
+    const lock = conversationExecutionLock.acquire(conversationKey)
+    if (!lock.acquired) {
+      logger.info(`[loli] conversation busy, skip secondary trigger: ${conversationKey}`)
+      if (trigger.type !== 'proactive' && lock.shouldNotify && typeof e.reply === 'function') {
+        try {
+          await e.reply('上一个任务还没处理完，等我一下。')
+        } catch (err) {
+          logger.debug?.(`[loli] busy notice failed: ${err.message}`)
+        }
+      }
+      return true
+    }
+
+    try {
+      return await this._handleLoli(e, {
+        engine,
+        cfg,
+        chaiteConfig,
+        uid,
+        gid,
+        inGroup,
+        selfId,
+        trigger,
+        conversationKey
+      })
+    } finally {
+      conversationExecutionLock.release(conversationKey)
+    }
   }
 
   async _handleLoli (e, context) {
@@ -327,14 +356,41 @@ export class loli extends plugin {
     // ── 冷却检查 ────────────────────────────────
     const cdUser = cfg.cooldownUser ?? 3000
     const cdGroup = cfg.cooldownGroup ?? 1000
-    const lastUserReply = cooldowns.user.get(uid) || 0
+    // 同一 QQ 在不同群的冷却也必须隔离，避免一个群影响另一个群。
+    const userCooldownKey = conversationKey
+    const lastUserReply = cooldowns.user.get(userCooldownKey) || 0
     if (now - lastUserReply < cdUser) return false
     if (gid) {
       const lastGroupReply = cooldowns.group.get(gid) || 0
       if (now - lastGroupReply < cdGroup) return false
     }
+
+    // 主动回复也必须保留当前真实消息。先验证再占用冷却和会话，空事件直接跳过。
+    let proactiveUserMessage = null
+    if (trigger.type === 'proactive') {
+      proactiveUserMessage = await intoUserMessage(e, {
+        handleReplyText: true,
+        handleReplyImage: true,
+        useRawMessage: false,
+        handleAtMsg: true,
+        excludeAtBot: true,
+        toggleMode: 'at',
+        imageCompress: cfg.imageCompress
+      })
+      if (!hasMeaningfulUserMessage(proactiveUserMessage) && String(e.msg || '').trim()) {
+        proactiveUserMessage = {
+          ...proactiveUserMessage,
+          content: [
+            ...(Array.isArray(proactiveUserMessage?.content) ? proactiveUserMessage.content : []),
+            { type: 'text', text: String(e.msg).trim() }
+          ]
+        }
+      }
+      if (!hasMeaningfulUserMessage(proactiveUserMessage)) return false
+    }
+
     // 标记冷却时间（提前设置，防止本函数异步执行期间重复触发）
-    cooldowns.user.set(uid, now)
+    cooldowns.user.set(userCooldownKey, now)
     if (gid) cooldowns.group.set(gid, now)
 
     // ── 会话复用 ────────────────────────────────
@@ -378,16 +434,12 @@ export class loli extends plugin {
     const sendOpts = JSON.parse(JSON.stringify(preset.sendMessageOption || {}))
     if (cfg.temperature >= 0) sendOpts.temperature = cfg.temperature
     if (cfg.maxTokens > 0) sendOpts.maxTokens = cfg.maxTokens
+    const historyMaxMessages = Number(getConfig().llm?.historyMaxMessages)
+    if (historyMaxMessages > 0) sendOpts.historyLimit = historyMaxMessages
 
     // 构建用户消息
-    let userMessage
-    if (trigger.type === 'proactive') {
-      userMessage = {
-        role: 'user',
-        content: [{ type: 'text', text: '（基于以上群聊上下文，自然地说一句简短的话加入讨论，不要自我介绍，不要提"上下文"或"以上内容"）' }],
-        timestamp: now
-      }
-    } else {
+    let userMessage = proactiveUserMessage
+    if (!userMessage) {
       userMessage = await intoUserMessage(e, {
         handleReplyText: true,
         handleReplyImage: true,
@@ -430,56 +482,19 @@ export class loli extends plugin {
     const chatterNameMap = inGroup ? await buildChatterNameMap(e) : {}
 
     // 构建系统提示
+    // 拼接顺序按变动频率排列：静态规则 → 低频（身份/群学习）→ 高频（记忆/群上下文/时间）。
+    // Gemini 隐式缓存按前缀命中，静态段尽量靠前可以拉长可缓存前缀。
     const systemSegments = []
+
+    // ── 静态段：预设人设与固定规则 ──
     const systemText = preset.systemPrompt?.content || chaiteConfig.presets?.find(p => p.id === presetId)?.systemPrompt?.content || ''
     if (systemText) systemSegments.push(systemText)
-
-    if (inGroup) {
-      const identityPrompt = buildIdentityAwarenessPrompt({
-        baseDir: _resolveMemoryBaseDir(),
+    if (trigger.type === 'proactive') {
+      systemSegments.push(buildProactiveSystemDirective({
         groupId: gid,
         userId: uid,
-        config: getConfig()
-      })
-      if (identityPrompt) systemSegments.push(identityPrompt)
-    }
-
-    // Hermes 风格的群级 USER/MEMORY 覆盖层；只调整表达与互动策略，不改核心人设。
-    if (inGroup) {
-      const learnedGroupPrompt = buildGroupLearningPrompt({
-        baseDir: _resolveMemoryBaseDir(),
-        groupId: gid,
-        config: getConfig()
-      })
-      if (learnedGroupPrompt) systemSegments.push(learnedGroupPrompt)
-    }
-    systemSegments.push(`[运行环境]\n当前北京时间：${formatTimeToBeiJing(now)}\n时区：Asia/Shanghai（UTC+8）`)
-
-    // 记忆提示
-    const baseDir = _resolveMemoryBaseDir()
-    const memoryPrompt = await buildMemoryPrompt({
-      baseDir,
-      groupId: gid,
-      userId: uid,
-      queryText: userText,
-      config: getConfig()
-    })
-    if (memoryPrompt) systemSegments.push(memoryPrompt)
-
-    // 群聊上下文
-    if (inGroup && cfg.contextLength > 0) {
-      const ctx = await getGroupContextPrompt(e, cfg.contextLength, {
-        // 排除 bot 自己的历史发言，避免 AI 看到自己之前说的话造成自指/循环
-        excludeSelfId: selfId,
-        // 排除当前正在处理的这条消息，避免与 userMessage 内容重复
-        excludeMessageId: [e.message_id, e.seq, e.source?.seq]
-      })
-      if (ctx) systemSegments.push(ctx)
-    }
-
-    // 优雅退出：本轮最后一次回复，AI 自己生成收尾
-    if (isLastInBurst) {
-      systemSegments.push('[系统指令] 这是本轮对话的最后一次回复，自然地结束对话并道别，不要生硬地说"再见"或"拜拜"，继续保持你的性格和语气。')
+        messageId: e.message_id || e.messageId || e.seq || e.source?.seq
+      }))
     }
 
     if (cfg.segmentedReply?.enable !== false) {
@@ -501,6 +516,64 @@ export class loli extends plugin {
         logger?.warn?.(`[Sticker] 构建表情提示失败: ${err.message}`)
       }
     }
+    let reactionOffered = false
+    if (inGroup && canReactToMessage(e, stickerConfig) && shouldOfferReaction(stickerConfig)) {
+      const reactionPrompt = buildReactionDirectivePrompt(stickerConfig)
+      if (reactionPrompt) {
+        systemSegments.push(reactionPrompt)
+        reactionOffered = true
+      }
+    }
+
+    // 优雅退出：本轮最后一次回复，AI 自己生成收尾
+    if (isLastInBurst) {
+      systemSegments.push('[系统指令] 这是本轮对话的最后一次回复，自然地结束对话并道别，不要生硬地说"再见"或"拜拜"，继续保持你的性格和语气。')
+    }
+
+    // ── 低频段：身份与群学习设定（版本化，变动以小时/天计） ──
+    if (inGroup) {
+      const identityPrompt = buildIdentityAwarenessPrompt({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        userId: uid,
+        config: getConfig()
+      })
+      if (identityPrompt) systemSegments.push(identityPrompt)
+    }
+
+    // Hermes 风格的群级 USER/MEMORY 覆盖层；只调整表达与互动策略，不改核心人设。
+    if (inGroup) {
+      const learnedGroupPrompt = buildGroupLearningPrompt({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        config: getConfig()
+      })
+      if (learnedGroupPrompt) systemSegments.push(learnedGroupPrompt)
+
+      const memberMemoryPrompt = buildGroupMemberMemoryPrompt({
+        baseDir: _resolveMemoryBaseDir(),
+        groupId: gid,
+        userId: uid,
+        config: getConfig()
+      })
+      if (memberMemoryPrompt) systemSegments.push(memberMemoryPrompt)
+    }
+
+    // ── 高频段：每条消息都变的内容放最后 ──
+    const baseDir = _resolveMemoryBaseDir()
+
+    // 群聊上下文
+    if (inGroup && cfg.contextLength > 0) {
+      const ctx = await getGroupContextPrompt(e, cfg.contextLength, {
+        // 排除 bot 自己的历史发言，避免 AI 看到自己之前说的话造成自指/循环
+        excludeSelfId: selfId,
+        // 排除当前正在处理的这条消息，避免与 userMessage 内容重复
+        excludeMessageId: [e.message_id, e.seq, e.source?.seq]
+      })
+      if (ctx) systemSegments.push(ctx)
+    }
+
+    systemSegments.push(`[运行环境]\n当前北京时间：${formatTimeToBeiJing(now)}\n时区：Asia/Shanghai（UTC+8）`)
 
     const systemPromptOverride = systemSegments.length > 0 ? systemSegments.join('\n\n') : undefined
 
@@ -515,8 +588,35 @@ export class loli extends plugin {
       systemPromptOverride
     })
 
+    // 历史超长时异步压缩为滚动摘要，不阻塞回复
+    void maybeCompressHistory({
+      storage: engine.storage,
+      conversationId,
+      config: getConfig(),
+      logger
+    }).catch(err => logger?.warn?.(`[loli] 会话历史压缩失败: ${err.message}`))
+
+    // 一次用户请求内可能连续调用多次代码/浏览器工具；统一汇总成一条合并转发，避免逐次刷屏。
+    if (Array.isArray(result.executionReports) && result.executionReports.length > 0) {
+      const reportNodes = result.executionReports.flatMap((report, index) => [
+        `──────── 第 ${index + 1} 次执行 · ${report.language || 'unknown'} ────────`,
+        ...(report.nodes || [])
+      ])
+      try {
+        const forward = await makeForwardMsg(
+          e,
+          reportNodes,
+          `🧪 AI 工具执行记录 · 共 ${result.executionReports.length} 次`
+        )
+        await e.reply(forward)
+      } catch (err) {
+        logger.warn(`[loli] 发送工具执行合并记录失败: ${err.message}`)
+      }
+    }
+
     const responseText = result.finalText
-    const stickerDirective = extractStickerDirective(responseText)
+    const interactionDirective = extractInteractionDirectives(responseText)
+    const stickerDirective = extractStickerDirective(interactionDirective.text)
     const visibleResponseText = stickerDirective.text
     let deliveredResponseText = visibleResponseText
     let matchedSticker = null
@@ -524,7 +624,10 @@ export class loli extends plugin {
     let replySourceText = visibleResponseText
 
     if (stickerDirective.emotion && stickerConfig?.stickers?.enable !== false && stickerCooldownOpen) {
-      matchedSticker = findSticker({ emotion: stickerDirective.emotion })
+      matchedSticker = findSticker({
+        emotion: stickerDirective.emotion,
+        context: visibleResponseText
+      })
       if (!matchedSticker) {
         logger?.debug?.(`[Sticker] 没有匹配标签“${stickerDirective.emotion}”的可用表情，跳过发送`)
       } else {
@@ -557,7 +660,7 @@ export class loli extends plugin {
       }
       if (sentCount > 1) {
         const sentAt = Date.now()
-        cooldowns.user.set(uid, sentAt)
+        cooldowns.user.set(userCooldownKey, sentAt)
         if (gid) cooldowns.group.set(gid, sentAt)
       }
     }
@@ -570,6 +673,14 @@ export class loli extends plugin {
         stickerCooldowns.set(stickerKey, Date.now())
       } catch (err) {
         logger?.warn?.(`[Sticker] 表情 #${matchedSticker.id} 发送失败: ${err.message}`)
+      }
+    }
+
+    if (reactionOffered && interactionDirective.reaction && !matchedSticker) {
+      try {
+        await reactToMessage(e, interactionDirective.reaction, stickerConfig)
+      } catch (err) {
+        logger?.warn?.(`[Interaction] 消息表情回应失败: ${err.message}`)
       }
     }
 
@@ -593,7 +704,7 @@ export class loli extends plugin {
     // 优雅退出后：重置 burst 计数 + 加长冷却
     if (isLastInBurst) {
       const burstCooldown = cfg.burstCooldown ?? 180000  // 默认 3 分钟
-      cooldowns.user.set(uid, now + burstCooldown)
+      cooldowns.user.set(userCooldownKey, now + burstCooldown)
       if (gid) cooldowns.group.set(gid, now + burstCooldown)
       sessionCache.delete(conversationKey)
       logger.debug(`[loli] burst exhausted for ${conversationKey}, cooling down ${burstCooldown}ms`)

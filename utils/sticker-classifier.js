@@ -15,26 +15,35 @@ export function enqueueStickerClassifications ({ engine, config, event, stickers
   }
 }
 
-export async function classifySticker ({ engine, config, event, sticker, logger, dbFile } = {}) {
+export async function classifySticker ({ engine, config, event, sticker, logger, dbFile, force = false } = {}) {
   if (!engine || !sticker?.id) throw new Error('缺少引擎或表情记录')
-  const sourceUrl = await resolveStickerSourceUrl(sticker, event)
-  if (!sourceUrl) throw new Error('原始消息段没有可读取的图片 URL，请重新发送该表情后识别')
   const preset = resolveClassifierPreset(config)
   if (!preset?.channelId) throw new Error('没有可用的视觉模型渠道')
-  const image = await fetchAndCompressImage(sourceUrl, {
-    timeoutMs: 15000,
-    retries: 1,
-    // 动画 GIF/WebP 必须保留原始帧，不能沿用聊天图片的 JPEG 压缩逻辑。
-    imageCompress: { ...(config?.loli?.imageCompress || {}), enable: false }
-  })
+  const localFile = String(sticker.payload?.file || '')
+  let image
+  if (localFile && fs.existsSync(localFile)) {
+    image = {
+      buffer: fs.readFileSync(localFile),
+      mimeType: mimeTypeFromFile(localFile)
+    }
+  } else {
+    const sourceUrl = await resolveStickerSourceUrl(sticker, event)
+    if (!sourceUrl) throw new Error('原始消息段没有可读取的图片 URL，请重新发送该表情后识别')
+    image = await fetchAndCompressImage(sourceUrl, {
+      timeoutMs: 15000,
+      retries: 1,
+      // 动画 GIF/WebP 必须保留原始帧，不能沿用聊天图片的 JPEG 压缩逻辑。
+      imageCompress: { ...(config?.loli?.imageCompress || {}), enable: false }
+    })
+  }
   const cachedSticker = cacheStickerMedia(sticker.id, image.buffer, image.mimeType, dbFile)
-  if (sticker.description) return cachedSticker
+  if (sticker.description && !force) return cachedSticker
   const request = {
-    channelId: config?.stickers?.classificationChannelId || config?.memory?.refinementChannelId || preset.channelId,
+    channelId: config?.stickers?.classificationChannelId || preset.channelId,
     presetId: preset.id,
     image: image.buffer.toString('base64'),
     mimeType: image.mimeType,
-    model: config?.stickers?.classificationModel || config?.memory?.refinementModel || preset.sendMessageOption?.model
+    model: config?.stickers?.classificationModel || preset.sendMessageOption?.model
   }
   let result
   let structured = true
@@ -48,41 +57,76 @@ export async function classifySticker ({ engine, config, event, sticker, logger,
   let parsed
   try {
     parsed = parseClassification(result.finalText)
+    if (!parsed.complete) throw new Error('分类字段不完整')
   } catch (firstError) {
-    logger?.warn?.(`[Sticker] 表情 #${sticker.id} 标签 JSON 不完整，正在重试: ${firstError.message}`)
+    logger?.warn?.(`[Sticker] 表情 #${sticker.id} 标签结果不完整，正在重试: ${firstError.message}`)
     result = await requestClassification(engine, sticker.id, request, RETRY_CLASSIFICATION_REQUEST, structured)
     parsed = parseClassification(result.finalText, { allowPartial: true })
   }
-  const tags = [...parsed.emotions, ...parsed.actions, ...parsed.scenes]
-  if (!tags.length) throw new Error('视觉模型没有返回有效标签')
-  const updated = updateStickerMetadata(sticker.id, { tags, description: parsed.description }, dbFile)
-  logger?.info?.(`[Sticker] 表情 #${sticker.id} 已识别: ${tags.join('、')}`)
+  const tags = parsed.complete
+    ? [...parsed.intents, ...parsed.styles, ...parsed.actions, ...parsed.scenes]
+    : []
+  const updated = updateStickerMetadata(sticker.id, {
+    tags,
+    intents: parsed.complete ? parsed.intents : undefined,
+    styles: parsed.complete ? parsed.styles : undefined,
+    risk: parsed.complete ? parsed.risk : 'medium',
+    autoSend: parsed.complete && parsed.risk === 'safe',
+    description: parsed.description,
+    source: 'classifier',
+    replaceIntents: parsed.complete,
+    replaceStyles: parsed.complete
+  }, dbFile)
+  if (parsed.complete) {
+    logger?.info?.(`[Sticker] 表情 #${sticker.id} 已识别: ${tags.join('、')}`)
+  } else {
+    logger?.warn?.(`[Sticker] 表情 #${sticker.id} 分类仍不完整，已设为仅手动发送`)
+  }
   return updated
 }
 
-export async function classifyStoredSticker ({ engine, config, event, id, logger, dbFile } = {}) {
+export async function classifyStoredSticker ({ engine, config, event, id, logger, dbFile, force = true } = {}) {
   const sticker = getSticker(id, dbFile)
   if (!sticker) throw new Error(`没有找到表情 #${id}`)
-  return classifySticker({ engine, config, event, sticker, logger, dbFile })
+  return classifySticker({ engine, config, event, sticker, logger, dbFile, force })
 }
 
 const CLASSIFICATION_REQUEST = `分析这个 QQ 动画表情或贴纸，返回：
-{"emotions":["主要情绪"],"actions":["动作或反应"],"scenes":["适用聊天场景"],"description":"一句客观描述"}
-要求：每组 1-3 个简短中文词；不得猜人物真实身份；不得输出 Markdown 或 JSON 之外的文字。`
+{"intents":["核心意图"],"styles":["表达风格"],"actions":["动作或反应"],"scenes":["适用聊天场景"],"risk":"safe|medium|high","description":"一句客观描述"}
+核心意图只能从以下词中选择 1-3 个：开心、兴奋、得意、害羞、惊讶、疑惑、无语、无奈、尴尬、嫌弃、生气、不满、委屈、难过、崩溃、安慰、赞同、称赞、拒绝、催促、调侃、卖萌、打招呼、告别。
+风格使用简短词，如可爱、夸张、阴阳怪气、攻击性、粗俗、诡异、卖萌。
+risk：普通聊天可安全自动发送为 safe；可能冒犯或语境要求较高为 medium；包含辱骂、色情、粗俗挑衅或强攻击文字为 high。
+要求：数组每组 1-3 个简短中文词；不得猜人物真实身份；不得输出 Markdown 或 JSON 之外的文字。`
 
 const RETRY_CLASSIFICATION_REQUEST = `分析这个 QQ 表情。只输出一行紧凑 JSON，不要代码块、解释或思考过程：
-{"emotions":["情绪"],"actions":["动作"],"scenes":["场景"],"description":"描述"}`
+{"intents":["核心意图"],"styles":["风格"],"actions":["动作"],"scenes":["场景"],"risk":"safe|medium|high","description":"描述"}`
 
 const CLASSIFICATION_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    emotions: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
+    intents: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: [
+          '开心', '兴奋', '得意', '害羞', '惊讶', '疑惑',
+          '无语', '无奈', '尴尬', '嫌弃', '生气', '不满',
+          '委屈', '难过', '崩溃', '安慰',
+          '赞同', '称赞', '拒绝', '催促',
+          '调侃', '卖萌', '打招呼', '告别'
+        ]
+      },
+      minItems: 1,
+      maxItems: 3
+    },
+    styles: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
     actions: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
     scenes: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
+    risk: { type: 'string', enum: ['safe', 'medium', 'high'] },
     description: { type: 'string' }
   },
-  required: ['emotions', 'actions', 'scenes', 'description']
+  required: ['intents', 'styles', 'actions', 'scenes', 'risk', 'description']
 }
 
 async function requestClassification (engine, stickerId, request, prompt, structured = true) {
@@ -157,24 +201,40 @@ function parseClassification (text, { allowPartial = false } = {}) {
     if (!allowPartial) throw new Error(`视觉模型返回的 JSON 不完整: ${source.slice(0, 100) || '(空)'}`)
     parsed = parsePartialClassification(source)
   }
+  const complete = Array.isArray(parsed.intents) && parsed.intents.length > 0 &&
+    Array.isArray(parsed.styles) && parsed.styles.length > 0 &&
+    Array.isArray(parsed.actions) && parsed.actions.length > 0 &&
+    Array.isArray(parsed.scenes) && parsed.scenes.length > 0 &&
+    ['safe', 'medium', 'high'].includes(String(parsed.risk)) &&
+    typeof parsed.description === 'string' && parsed.description.trim().length > 0
   return {
-    emotions: cleanArray(parsed.emotions || parsed.emotion),
+    intents: cleanArray(parsed.intents || parsed.emotions || parsed.emotion),
+    styles: cleanArray(parsed.styles || parsed.style),
     actions: cleanArray(parsed.actions || parsed.action),
     scenes: cleanArray(parsed.scenes || parsed.scene || parsed.contexts),
-    description: String(parsed.description || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120)
+    risk: ['safe', 'medium', 'high'].includes(String(parsed.risk)) ? String(parsed.risk) : 'medium',
+    description: String(parsed.description || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 120),
+    complete
   }
 }
 
-function parsePartialClassification (source) {
-  const values = [...String(source).matchAll(/"([^"\r\n]{1,20})"/gu)].map(match => match[1])
-    .filter(value => !['emotions', 'emotion', 'actions', 'action', 'scenes', 'scene', 'contexts', 'description'].includes(value))
-  if (!values.length) throw new Error(`视觉模型重试后仍被截断: ${String(source).slice(0, 100) || '(空)'}`)
-  return { emotions: values.slice(0, 3), actions: [], scenes: [], description: '' }
+function parsePartialClassification (_source) {
+  return { intents: [], styles: [], actions: [], scenes: [], risk: 'medium', description: '' }
 }
 
 function cleanArray (value) {
   const values = Array.isArray(value) ? value : value ? [value] : []
   return [...new Set(values.map(item => String(item).replace(/[\r\n,，、]+/g, ' ').trim()).filter(Boolean))].slice(0, 3)
+}
+
+function mimeTypeFromFile (file) {
+  return ({
+    '.gif': 'image/gif',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg'
+  })[String(file).toLowerCase().match(/\.[^.]+$/u)?.[0]] || 'application/octet-stream'
 }
 
 function findHttpUrl (value, depth = 0) {

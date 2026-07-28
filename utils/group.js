@@ -2,6 +2,7 @@ import { getBotFramework, getEventBot, getEventGroup, getGroupId, normalizeSegme
 import { getConfig } from './state.js'
 import { formatOneBotSegmentText, formatRawMessage, formatTimeToBeiJing, renderTemplate } from './common.js'
 import { resolveSenderIdentity } from './identity.js'
+import { formatMediaSequence, normalizeGroupMessage } from './group-message.js'
 
 /**
  * @typedef {Object} GroupHistoryOptions
@@ -268,9 +269,12 @@ export function buildGroupContextPrompt (e, chats, templates = {}) {
     groupContextTemplateSuffix = ''
   } = templates
   if (!groupContextTemplateMessage || !Array.isArray(chats) || chats.length === 0) return ''
+  const timelineOptions = templates.groupTimeline || {}
+  const timelineEnabled = timelineOptions.enable !== false
 
-  const rows = sortHistoryChronologically(chats)
-    .map(chat => {
+  const orderedChats = sortHistoryChronologically(chats)
+  const rows = orderedChats
+    .map((chat, index) => {
       const sender = normalizeHistorySender(chat)
       const identity = resolveSenderIdentity(sender, { config: getConfig(), inGroup: true })
       const raw = getHistoryMessageText(chat)
@@ -290,7 +294,8 @@ export function buildGroupContextPrompt (e, chats, templates = {}) {
       const contextualSenderName = missingIdentityFields.length
         ? `${senderName} [${missingIdentityFields.join(' | ')}]`
         : senderName
-      return renderTemplate(groupContextTemplateMessage, {
+      const messageId = String(chat.message_id || chat.messageId || chat.seq || chat.source?.seq || '-')
+      const rendered = renderTemplate(groupContextTemplateMessage, {
         '${message.sender.card}': sender.card || '-',
         '${message.sender.nickname}': sender.nickname || '-',
         '${message.sender.user_id}': String(sender.user_id || '-'),
@@ -306,9 +311,21 @@ export function buildGroupContextPrompt (e, chats, templates = {}) {
         '${message.sender.sex}': sender.sex || '-',
         '${message.sender.area}': sender.area || '-',
         '${message.time}': getHistoryTime(chat) ? formatTimeToBeiJing(getHistoryTime(chat)) : '-',
-        '${message.messageId}': String(chat.message_id || chat.messageId || chat.seq || chat.source?.seq || '-'),
+        '${message.messageId}': messageId,
         '${message.raw_message}': raw
       }).trim()
+      const ref = normalizeGroupMessage(chat, { source: 'history', event: e })
+      const metadata = []
+      if (!groupContextTemplateMessage.includes('${message.messageId}')) metadata.push(`消息ID:${messageId}`)
+      if (timelineEnabled) {
+        const sequence = formatMediaSequence(ref)
+        if (sequence) metadata.push(`媒体:${sequence}`)
+        if (ref.replyTo) metadata.push(`引用:${ref.replyTo}`)
+        const eventType = String(ref.raw?.notice_type || ref.raw?.sub_type || '').slice(0, 80)
+        if (eventType) metadata.push(`事件:${eventType}`)
+      }
+      const locator = metadata.length ? `[${metadata.join(' | ')}] ` : ''
+      return `${locator}${rendered}`
     })
     .filter(Boolean)
     .join('\n')
@@ -320,9 +337,75 @@ export function buildGroupContextPrompt (e, chats, templates = {}) {
     '${group.member_count}': String(e.group?.member_count || e.group?.memberNum || '-'),
     '${group.max_member_count}': String(e.group?.max_member_count || e.group?.maxMemberCount || '-')
   })
+  const currentLocator = timelineEnabled
+    ? buildCurrentMessageLocator(e, orderedChats, timelineOptions)
+    : ''
   const suffix = groupContextTemplateSuffix || ''
 
-  return [prefix, rows, suffix].filter(s => s !== '').join('\n')
+  return [prefix, rows, currentLocator, suffix].filter(s => s !== '').join('\n')
+}
+
+/**
+ * 群聊正文已按时间顺序携带消息 ID、媒体和引用信息。
+ * 当前消息正文由 userMessage 单独传入，这里只补一行定位，避免重复正文。
+ */
+function buildCurrentMessageLocator (e, chats, options = {}) {
+  if (options.includeCurrent === false) return ''
+  const currentId = String(e?.message_id || e?.messageId || e?.seq || '')
+  if (!currentId) return ''
+  const alreadyIncluded = chats.some(chat => {
+    const ids = [chat?.message_id, chat?.messageId, chat?.seq, chat?.source?.seq]
+      .filter(value => value !== undefined && value !== null && value !== '')
+      .map(String)
+    return ids.includes(currentId)
+  })
+  if (alreadyIncluded) return ''
+  const ref = normalizeGroupMessage(e, { source: 'current', event: e })
+  return `[当前消息定位] ${formatTimelineLine(ref, chats.length + 1)}`
+}
+
+/** 构建不重复正文的紧凑时间轴，供模型理解相对顺序并定位媒体消息。 */
+export function buildGroupTimeline (e, chats, options = {}) {
+  if (!Array.isArray(chats) || chats.length === 0) return ''
+  const maxChars = Math.max(500, Math.min(12000, Number(options.maxChars) || 3000))
+  const refs = sortHistoryChronologically(chats)
+    .map(chat => normalizeGroupMessage(chat, { source: 'history', event: e }))
+  const currentId = String(e?.message_id || e?.messageId || e?.seq || '')
+  const alreadyIncluded = currentId && refs.some(ref => ref.messageId === currentId || ref.seq === currentId)
+  if (!alreadyIncluded && options.includeCurrent !== false) {
+    refs.push(normalizeGroupMessage(e, { source: 'current', event: e }))
+  }
+
+  let omitted = 0
+  let lines = refs.map((ref, index) => formatTimelineLine(ref, index + 1))
+  const header = '[群聊消息时间轴｜从旧到新]'
+  while (lines.length > 1) {
+    const omittedLine = omitted ? `… 已省略更早的 ${omitted} 条消息` : ''
+    const rendered = [header, omittedLine, ...lines].filter(Boolean).join('\n')
+    if (rendered.length <= maxChars) return rendered
+    lines.shift()
+    omitted++
+  }
+  const omittedLine = omitted ? `… 已省略更早的 ${omitted} 条消息` : ''
+  const rendered = [header, omittedLine, ...lines].filter(Boolean).join('\n')
+  return rendered.length <= maxChars ? rendered : `${rendered.slice(0, maxChars - 1)}…`
+}
+
+function formatTimelineLine (ref, position) {
+  const label = ref.source === 'current' ? '[当前]' : `#${String(position).padStart(2, '0')}`
+  const time = ref.timestampSec ? formatTimeToBeiJing(ref.timestampSec) : '-'
+  const senderId = ref.sender.id || '-'
+  const senderName = ref.sender.name && ref.sender.name !== senderId ? String(ref.sender.name).slice(0, 80) : ''
+  const details = []
+  const sequence = formatMediaSequence(ref)
+  if (sequence) details.push(`媒体:${sequence}`)
+  if (ref.replyTo) details.push(`引用:${ref.replyTo}`)
+  const eventType = String(ref.raw?.notice_type || ref.raw?.sub_type || '').slice(0, 80)
+  if (eventType) details.push(`事件:${eventType}`)
+  return [
+    `${label} | ${time} | 消息ID:${ref.messageId || '-'} | QQ:${senderId}${senderName ? `(${senderName})` : ''}`,
+    ...details
+  ].join(' | ')
 }
 
 function normalizeHistorySender (chat) {
