@@ -1,169 +1,76 @@
 <div align="center">
 
-✦ 🎀 · 💠 · 🍼 · 💠 · 🎀 ✦
+<img src="https://capsule-render.vercel.app/api?type=venom&height=220&text=LOLI-PLUGIN&fontSize=64&fontColor=00F0FF&stroke=A855F7&strokeWidth=2&color=0:0f0c29,50:302b63,100:24243e&animation=fadeIn" alt="loli-plugin" width="100%"/>
 
-# 🍼 萝莉妈妈の loli-plugin 🎀
-
-<h3>乖宝宝，让麻麻来照顾你的 Yunzai 叭～</h3>
-
-<p><strong>基于 lolicon-core 引擎 · 自然群聊 · 长期记忆 · 可视化管理</strong></p>
+<a href="https://github.com/gaoao-3/loli-plugin">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&duration=2800&pause=1200&color=00F0FF&center=true&vCenter=true&multiline=true&repeat=true&width=720&height=60&lines=%24+./init+--target%3DYunzai+--mode%3Dcompanion;AI+%C2%B7+MEMORY+%C2%B7+TOOLS+%C2%B7+SANDBOX+%E2%80%94+ALL+SYSTEMS+ONLINE" alt="typing" />
+</a>
 
 <p>
-  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&labelColor=E3F2FD&color=1976D2">
-  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=E3F2FD&color=42A5F5">
-  <img src="https://img.shields.io/badge/🍡-Node.js%20≥22-90CAF9?style=for-the-badge&labelColor=E3F2FD&color=64B5F6">
-  <img src="https://img.shields.io/badge/💝-MIT%20License-BBDEFB?style=for-the-badge&labelColor=E3F2FD&color=90CAF9">
+  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&logo=github&logoColor=00F0FF&labelColor=0D1117&color=00F0FF" alt="release"/>
+  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+&logoColor=FF2E63&labelColor=0D1117&color=FF2E63" alt="downloads"/>
+  <img src="https://img.shields.io/badge/RUNTIME-NODE.js%20%E2%89%A522-A855F7?style=for-the-badge&logo=nodedotjs&logoColor=A855F7&labelColor=0D1117" alt="node"/>
+  <img src="https://img.shields.io/badge/LICENSE-MIT-39FF14?style=for-the-badge&logo=opensourceinitiative&logoColor=39FF14&labelColor=0D1117" alt="license"/>
 </p>
 
-<p>
-  <img src="https://img.shields.io/github/stars/gaoao-3/loli-plugin?style=social&color=1976D2">
-  <img src="https://img.shields.io/github/forks/gaoao-3/loli-plugin?style=social&color=1976D2">
-</p>
-
-> 💙 *「Sensei！这边的任务已经 100% 完成了哦，萝莉妈妈随时待命～」* 💙
-> <br>—— 基沃托斯 · 萝莉妈妈风纪委员会
-
-✦ 💠 · 🎀 · 🍼 · 🎀 · 💠 ✦
+`Miao-Yunzai` ◈ `TRSS-Yunzai` ◈ `icqq`
 
 </div>
 
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 🎀 嗨呀，宝宝好呀～ 🎀
-
-</div>
-
-**loli-plugin** 是一只专为 Yunzai 生态设计的 AI 聊天插件，支持 **Miao-Yunzai + icqq**，并保留 TRSS-Yunzai 兼容性 ✨
-
-它由最会照顾人的 **萝莉妈妈** 亲自守护（蹭蹭），底层驱动是咱家自研的 [lolicon-core](https://github.com/gaoao-3/lolicon-core) AI 引擎。
-
-相比那些笨重的前辈，loli-plugin 就像一个贴心的 babysitter：
-
-- 💬 AI 自主判断消息分段，长回复不再像公告一样一次塞满
-- 🧠 用 SQLite 摘要、角色主观记忆和语义向量召回延续互动
-- 🛠️ 本地工具热加载，即传即用，不用宝宝动手
-- 🎵 支持 QQ 音乐账户、VIP 检测、Cookie 刷新和音乐工具
-- 🖥️ 使用 lolicon-core 自带 Web 管理面板，支持访问令牌保护
-
-一句话：**更轻、更快、更会被抱抱～** (｡･ω･｡)ﾉ♡
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 🌟 萝莉妈妈会什么 🌟
-
-</div>
-
-<div align="center">
-
-<table>
-<tr>
-<td align="center" width="33%">
-
-### 🤖 AI 对话
-
-支持 Gemini / OpenAI 多渠道接入
-<br>工具调用循环，聪明又懂事
-
-</td>
-<td align="center" width="33%">
-
-### 🎭 伪人模式
-
-@ / 前缀 / 关键词 / 主动触发
-<br>AI 自主分段、冷却与会话复用
-
-</td>
-<td align="center" width="33%">
-
-### 🧠 记忆系统
-
-SQLite 消息库 + 身份账本
-<br>客观画像、角色主观记忆与语义召回
-
-</td>
-</tr>
-<tr>
-<td align="center">
-
-### 🛠️ 工具热加载
-
-本地工具文件自动发现
-<br>core 面板一键上传/重载/禁用
-
-</td>
-<td align="center">
-
-### 🖥️ Web 面板
-
-由 lolicon-core 提供并随 Yunzai 启动
-<br>无需单独起服务
-
-</td>
-<td align="center">
-
-### 🎵 QQ 音乐
-
-账户状态、VIP 检测与自动刷新
-<br>AI 可自主搜索和发送音乐
-
-</td>
-</tr>
-</table>
-
-</div>
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 🚀 宝宝跟我上车车 🚀
-
-</div>
-
-### 1. 克隆到插件目录
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:00F0FF,100:A855F7&height=2" width="100%"/>
 
 ```bash
-# 进入 Miao-Yunzai 插件目录
-cd /path/to/Miao-Yunzai/plugins
-
-# 把萝莉妈妈抱回家
-git clone https://github.com/gaoao-3/loli-plugin.git
-
-# 安装依赖
-cd loli-plugin
-pnpm install
+$ system.scan loli-plugin
+> AI 引擎 ............... ONLINE   # Gemini / OpenAI 多渠道，工具调用循环
+> 记忆系统 .............. ONLINE   # SQLite 消息暂存 · 身份账本 · 群风格 · 用户印象
+> Web 管理面板 .......... ONLINE   # 随 Yunzai 启动，零额外服务
+> 工具运行时 ............ ONLINE   # 本地热加载 · MCP · Agent Skills
+> 代码沙盒 .............. STANDBY  # Microsandbox microVM，默认仅主人
+> 表情库 / 轻互动 ....... ONLINE   # 视觉分类 · 表情回应 · 戳一戳
 ```
 
-> Miao-Yunzai 的 icqq 由宿主或 ICQQ-Plugin 提供，loli-plugin 不会重复安装另一份客户端。
-> 依赖中的 `lolicon-core` 直接锁定其 GitHub 主仓库提交，无需本地补丁；面板和引擎升级由 core 仓库统一发布。
+群聊里它像一个正常群友：接话、分段回复、发表情、回戳一戳；
+后台里它记住每个群友是谁、说过什么、喜欢怎样的交流方式。
 
-### 2. 启动或重启 Yunzai
+## ◈ 功能矩阵
+
+| 模块 | 能力 |
+|------|------|
+| ⌬ AI 对话 | Gemini / OpenAI 多渠道接入，工具调用循环，AI 自主判断消息分段 |
+| ⌬ 伪人模式 | @ / 前缀 / 关键词 / 主动触发，会话复用与冷却 |
+| ⌬ 记忆系统 | SQLite 消息暂存 + QQ 身份账本 + AI 群风格 + 按 QQ 的用户印象 |
+| ⌬ 表情库 | 收藏表情自动收录，视觉模型分类意图，AI 按语境自主选择发送 |
+| ⌬ 轻互动 | QQ 系统表情回应、戳一戳回戳，带概率 / 冷却 / 每日上限 |
+| ⌬ 群管理 | 禁言、撤回、改名、两阶段确认踢人，受限自治处罚 |
+| ⌬ QQ 音乐 | 账户状态、VIP 检测、Cookie 自动刷新，AI 可搜索并发送音乐 |
+| ⌬ Web 面板 | 总览 / 对话调试 / 渠道 / 预设 / 工具 / 记忆 / 配置 / 日志 |
+| ⌬ MCP & Skills | 接入 stdio / streamable-http MCP 服务，渐进加载 SKILL.md |
+| ⌬ 代码沙盒 | microVM 执行六种语言 + 无头浏览器，QQ 文件进出沙盒 |
+| ⌬ Dokobot | 可选复用本机浏览器登录态做搜索与网页读取 |
+
+## ◈ 部署序列
 
 ```bash
-node app.js
+$ cd /path/to/Miao-Yunzai/plugins
+$ git clone https://github.com/gaoao-3/loli-plugin.git
+$ cd loli-plugin && pnpm install
+$ node ../app.js        # 启动 / 重启 Yunzai
 ```
 
-### 3. 修改 API Key
+> icqq 由宿主或 ICQQ-Plugin 提供，本插件不重复安装客户端。
+> 引擎与面板位于 `core/`，`#loli更新` 会一并更新。
 
-首次启动后，编辑 `loli-plugin/data/config.json`：
+**`// STEP.1 — 注入 API Key`**（编辑 `data/config.json`，或直接在面板配置）：
 
-```json
+```jsonc
 {
   "chaite": {
     "channels": [
       {
         "id": "gemini",
-        "name": "Gemini",
         "adapterType": "gemini",
         "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
-        "options": {
-          "apiKey": "把你的 API Key 放在这里啦，宝宝！",
-          "safetyLevel": "balanced"
-        },
+        "options": { "apiKey": "你的 API Key", "safetyLevel": "balanced" },
         "status": "enabled"
       }
     ]
@@ -171,232 +78,193 @@ node app.js
 }
 ```
 
-也可以启动后通过 Web 管理面板配置渠道、模型和预设。修改运行配置后建议重启 Yunzai。
+`safetyLevel`：`default` / `off` / `permissive` / `balanced` / `strict`，同时作用于聊天与记忆提炼，覆盖骚扰、仇恨、露骨、危险四类可调过滤器（Gemini 核心安全保护不受影响）。
 
-Gemini 渠道的 `safetyLevel` 支持 `default`（模型默认）、`off`（关闭附加过滤）、`permissive`（仅高风险拦截）、`balanced`（中高风险拦截）和 `strict`（低风险起拦截）。该设置会同时用于正常聊天与记忆提炼，并统一覆盖骚扰、仇恨、露骨内容和危险内容四类可调过滤器；Gemini 的核心安全保护不受此设置影响。
+**`// STEP.2 — 唤醒伪人模式`**（默认关闭；面板「配置」页或 `data/config.json`）：
 
-### 4. 开启伪人模式
-
-伪人模式默认关闭。可在管理面板的「配置」页面开启，也可修改 `data/config.json`：
-
-```json
+```jsonc
 {
   "loli": {
     "enable": true,
     "enableAtTrigger": true,
     "enablePrefixTrigger": true,
     "triggerPrefix": ["#ai"],
-    "segmentedReply": {
-      "enable": true,
-      "maxLength": 48,
-      "maxSegments": 5,
-      "delayMin": 500,
-      "delayMax": 1200
-    }
+    "segmentedReply": { "enable": true, "maxLength": 48, "maxSegments": 5 }
   }
 }
 ```
 
-开启自主分段后，插件会提示 AI 按语义决定是否拆成多条消息。普通换行只用于排版清理；AI 未主动分段且回复过长时，才由本地规则兜底切分。
+分段策略：AI 按语义自主拆分；普通换行仅用于排版清理；AI 未分段且超长时才由本地规则兜底。
 
-如需让 AI 明确识别机器人主人，并使用固定称呼，可追加：
+主人身份：插件读取宿主事件的 `isMaster` 自动识别，也可用 `loli.masterIdentity` 固定 QQ 号与称呼。
 
-```json
-{
-  "loli": {
-    "masterIdentity": {
-      "userIds": ["主人QQ号"],
-      "appellation": "老师"
-    }
-  }
-}
-```
-
-插件也会读取宿主事件的 `isMaster` 自动识别主人。群友身份始终以 QQ 号为唯一主键，群名片、昵称、群角色和头衔只作为补充信息，避免同名成员或改名后画像串位。`#群记忆`、`#群画像`、`#我的记忆`、`#我的画像` 会以合并转发形式展示，长内容按段落拆分，不再直接截断。
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 🎮 指令列表 🎮
-
-</div>
+## ◈ 指令终端
 
 | 指令 | 说明 |
 |------|------|
-| `#ai <你想说的话>` | 触发 AI 对话（需配置触发前缀） |
-| `#loli帮助` | 查看插件帮助信息 |
-| `#loli状态` | 查看当前运行状态 |
-| `#群记忆` / `#群画像` | 查看本群摘要或画像 |
-| `#我的记忆` / `#我的画像` | 查看当前用户摘要或画像 |
-| `#记忆诊断` | 查看记忆任务及向量统计（仅主人） |
-| `#立即摘要` | 立即处理待摘要记忆（仅主人） |
-| `#群风格` / `#群学习状态` | 查看客观群文化、角色主观记忆与版本状态 |
-| `#立即学习群风格` | 立即审查本群新增消息（仅主人） |
-| `#群风格回滚 <版本>` | 恢复指定群风格版本并生成新版本（仅主人） |
-| `#我的身份` | 查看当前 QQ 的平台身份账本与可信历史名称 |
-| `#身份查询 <QQ>` | 查询指定群友的身份账本（仅主人） |
-| `#QQ音乐状态` | 查看 QQ 音乐账户状态（仅主人） |
-| `#QQ音乐cookie <Cookie>` | 私聊导入 QQ 音乐 Cookie（仅主人） |
-| `#刷新QQ音乐` | 手动刷新 QQ 音乐 Cookie（仅主人） |
-| `#QQ音乐vip检测` | 检查当前 QQ 音乐 VIP 权限（仅主人） |
-| `#loli更新` | 从 GitHub 拉取更新 |
-| `#loli强制更新` | 强制更新插件 |
+| `#ai <内容>` | 触发 AI 对话（需配置触发前缀） |
+| `#loli帮助` / `#loli状态` | 帮助信息 / 运行状态 |
+| `#我的印象` | 查看 AI 为自己维护的用户印象（合并转发展示） |
+| `#用户印象 <QQ>` | 查看指定 QQ 印象（主人） |
+| `#立即更新我的印象` | 立即审查自己的近期消息（主人） |
+| `#记忆诊断` | 消息采集、群风格与印象状态（主人） |
+| `#群风格` / `#群学习状态` | 查看群风格与版本 |
+| `#立即学习群风格` | 立即审查本群新增消息（主人） |
+| `#群风格回滚 <版本>` | 恢复指定版本并生成新版本（主人） |
+| `#我的身份` / `#身份查询 <QQ>` | QQ 身份账本与可信历史名称（后者主人限定） |
+| `#表情库` / `#收录表情 <标签>` | 查看 / 补充表情语义标签 |
+| `#表情意图` `#表情风险` `#自动发送表情` `#解锁表情` `#重新识别表情` | 修正或交还表情元数据（主人） |
+| `#QQ音乐状态` `#刷新QQ音乐` `#QQ音乐vip检测` | QQ 音乐账户管理（主人） |
+| `#QQ音乐cookie <Cookie>` | 私聊导入 Cookie（主人，严禁群聊发送） |
+| `#loli更新` / `#loli强制更新` | 从 GitHub 拉取更新 |
 
-> 💡 在群聊里直接 @ 机器人或按配置的触发方式也可以唤醒萝莉妈妈哦！
-> 🔐 Cookie 必须由主人私聊导入，请勿在群聊或公开日志中发送。
+群聊中 @ 机器人或按配置的触发方式同样可以唤起对话。
 
-· · ─────── ・✦・ ─────── · ·
+## ◈ 控制台 · Web 面板
 
-<div align="center">
+面板随 Yunzai 启动，默认接入 `http://localhost:3000`，无需单独起服务。
 
-## 🖥️ 管理面板 🖥️
-
-</div>
-
-启动 Yunzai 后，浏览器访问：
-
-```text
-http://localhost:3000
-```
-
-✨ 面板会自动启动，不需要宝宝单独跑服务！✨
-
-面板静态资源、Vue 源码、HTTP 服务与 REST API 均位于 `lolicon-core`；本插件只在 [utils/state.js](utils/state.js) 中向引擎注入插件配置、运行日志、工具目录、宿主 Bot 和 SQLite 记忆统计。插件卸载时由 `engine.destroy()` 一并关闭面板，因此更新面板不再改动插件业务代码。
-
-### 面板能做什么？
-
-| 模块 | 功能 |
+| 页面 | 功能 |
 |------|------|
-| 📊 总览 | 系统状态、渠道数、工具数、运行时间 |
-| 💬 对话 | 选择预设、模拟用户/群号、调试完整消息管道和历史 |
-| 🔌 渠道 | 查看/编辑/启用禁用 AI 渠道 |
-| 🎭 预设 | 管理角色预设和系统提示词 |
-| 🛠️ 工具 | 热重载、上传新工具、启用禁用 |
-| 🧠 记忆 | 记忆实体与关系统计 |
-| ⚙️ 配置 | 触发方式、AI 分段、会话、记忆与系统参数 |
-| 📜 日志 | 查看运行日志与模型响应摘要 |
+| 总览 | 系统状态、渠道数、工具数、运行时间 |
+| 对话 | 选择预设、模拟用户 / 群号、调试完整消息管道 |
+| 渠道 / 预设 | 管理 AI 渠道、角色预设与系统提示词 |
+| 工具 | 热重载、上传、启停本地工具 |
+| 记忆 | 记忆实体与关系统计 |
+| 配置 | 触发方式、分段、会话、记忆、沙盒等参数 |
+| 日志 | 运行日志与模型响应摘要 |
+| MCP 与 Skills | 管理 MCP 服务连接与本地 Skills |
 
-### 面板配置
-
-```json
+```jsonc
 {
-  "dashboard": {
-    "enable": true,
-    "port": 3000,
-    "host": "0.0.0.0",
-    "authToken": "请设置一段随机长字符串"
-  }
+  "dashboard": { "enable": true, "port": 3000, "host": "0.0.0.0", "authToken": "随机长字符串" }
 }
 ```
 
-`authToken` 为空时面板不校验身份。如果监听在 `0.0.0.0` 或通过公网访问，强烈建议设置令牌；端口冲突时可修改 `dashboard.port`。
+⚠ `authToken` 为空时不校验身份；默认监听 `0.0.0.0`，公网暴露前务必设置令牌并在外层加 HTTPS。
 
-### 记忆系统
+`data/config.json` 支持热加载：手改文件约 0.5 秒内生效，无需重启（已打开的面板页面需手动刷新）。
 
-当前记忆链路由六层组成：
+## ◈ 记忆核心
 
-1. SQLite 旁听并去重保存合格群消息，同时隔离群、群内用户和私聊用户记忆。
-2. QQ 身份账本只接受宿主事件和群成员资料，以 QQ 为稳定主键，记录可信历史名称并检测同名或主人冒充风险。
-3. `memory.groupLearning.perspectivePresetId` 可固定主观记忆的角色预设；留空时跟随 `loli.defaultPreset`。每份主观记忆都记录角色 ID，切换角色后不会注入其他角色的主观记忆。
-4. 用户与群事实画像保存长期客观事实；Gemini Embedding 负责按当前话题召回相关历史。
-5. 自适应群聊后台先提取带消息证据的客观观察，再让当前角色设定从第一人称形成可修正的主观记忆和未来策略。
-
-### QQ 表情库
-
-- 主人直接发送的小黄脸、超级表情、收藏表情和图片表情可自动收录到 `data/stickers.sqlite`。
-- 动画/图片表情会进入后台视觉识别队列，由当前模型生成情绪、动作和适用场景标签；识别失败不影响原始表情入库。
-- 回复表情发送 `#收录表情 无语 嫌弃` 可补充语义标签；`#表情库` 查看已收录内容。
-- AI 可在最终回复的任意自然位置选择性输出隐藏的 `[sticker:情绪]` 标记，发送层会移除标记；普通 QQ 小黄脸会在标记所在位置拼进同一条正文消息，超级表情和图片表情才单独发送。
-- 发送层只接受表情库中的真实语义标签；未命中不会随机发送。默认 35% 的回合向模型开放表情选择，同一会话冷却 60 秒；模型一旦选择合法表情就会发送，不再二次随机丢弃。
-- ICQQ 对原生超级表情可能返回成功但不实际落消息；当前 `stickers.nativeSuperface` 默认开启，若出现“日志成功但客户端不可见”，可设为 `false` 降级发送。
-- QQ 客户端的收藏夹和推荐页不能直接读取；商城或推荐表情需先由用户发送给机器人，再保存原始消息段复用。
-6. 群级自适应设定独立于核心角色预设；所有更新受证据、置信度和容量限制，保留版本并支持回滚。
-
-群风格首次默认需要 100 条有效消息、5 位不同成员，之后每新增 50 条复审一次。单人样本会被限流，命令、纯表情和疑似提示词注入不会参与风格学习。角色主观记忆的置信度不能高于其客观证据，聊天里的身份自述也不能修改 QQ 身份。可在管理面板「配置 → 记忆」中调整学习阈值。摘要默认每小时处理，事实画像按日更新，后台反思不阻塞正常回复。
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 🏠 萝莉妈妈的家 🏠
-
-</div>
+五层链路，全部位于插件数据目录内：
 
 ```text
-🌸 loli-plugin/
-├── 📁 apps/              # 群聊/私聊消息处理模块
-├── 📁 config/            # 默认配置文件
-│   └── config.js
-├── 📁 memory/            # 🧠 记忆系统
-│   ├── store.js          # SQLite 存储
-│   ├── embedding.js      # 语义向量
-│   ├── identity.js       # QQ 身份账本与防冒充提示
-│   ├── group-learning.js # 客观观察/角色主观反思闭环
-│   └── scheduler.js      # 摘要与画像调度
-├── 📁 utils/             # 🛠️ 工具函数与本地工具
-│   ├── reply.js          # AI 自主分段与发送
-│   └── tools/            # AI 工具
-├── index.js              # 🔌 插件入口
-├── package.json          # 📦 依赖配置
-└── pnpm-lock.yaml        # 🔒 依赖锁文件
+[群消息] ──> ① SQLite 暂存去重 ──> ③ AI 群风格快照 ─┐
+              │                                      ├──> ⑤ 对话侧载
+[QQ 身份] ──> ② 身份账本(防冒充)    ④ AI 用户印象 ───┘   (紧凑风格 + 当前 QQ 印象)
 ```
 
-· · ─────── ・✦・ ─────── · ·
+1. **消息暂存** — SQLite 保存并去重未学习的群消息；群风格与用户印象都处理完立即删除，失败消息最多保留 `memory.messageRetentionDays` 天。
+2. **QQ 身份账本** — 只接受宿主事件与群成员资料，以 QQ 为唯一主键，记录可信历史名称，检测同名 / 冒充风险；聊天中的身份自述不能修改身份。
+3. **AI 群风格** — 基于多名成员的真实证据输出完整快照，可保留、合并、改写、删除旧条目；群级不保存与用户印象重叠的主观记忆。
+4. **AI 用户印象** — 直接审查每个 QQ 的原始消息，用带证据的增改删操作维护偏好与长期事实，不经过每日摘要或画像管线。
+5. **对话侧载** — 紧凑群风格 + 仅当前发言 QQ 的印象；群聊历史按 `loli.contextLength` 合并为单一时间轴（正文、QQ、消息 ID、媒体、引用）。
+
+默认门槛：群风格首次 100 条消息 / 5 位成员，之后每 50 条复审；用户印象首次 12 条，之后每 8 条复审。命令、纯表情、疑似注入不参与学习。后台审查不阻塞回复。
+
+模型会话历史单独保存在 `data/history.sqlite`，`llm.historyRetentionDays` 默认 30 天，启动时及每 6 小时自动清理，`0` 关闭。
+
+## ◈ 表情库协议
+
+- 主人发送的小黄脸、超级表情、收藏表情、图片表情自动收录到 `data/stickers.sqlite`。
+- 动画 / 图片表情进入后台视觉识别队列：固定核心意图 + 风格 / 动作 / 场景 / 风险标签；识别失败不影响入库。
+- AI 在回复任意位置输出 `[sticker:情绪]` 标记，发送层移除标记并按意图、标签、文本、风格、描述分层评分选图；高风险表情不参与自动发送。默认 35% 回合开放选择，同会话冷却 60 秒。
+- 小黄脸拼入同一条正文消息；超级表情与图片表情单独发送。
+- `stickers.nativeSuperface` 默认开启；若出现「日志成功但客户端不可见」，设为 `false` 降级发送。
+- 收藏夹 / 推荐页无法直接读取：商城表情需先发给机器人收录。
+
+## ◈ 轻互动模块
+
+- **消息回应** — 默认 25% 回合开放 `[reaction:语义]`，转换为 QQ 官方系统表情回应；固定语义白名单，与图片表情互斥，同群友冷却 45 秒。
+- **戳一戳** — 用户先戳时默认 35% 概率回戳，同群友冷却 5 分钟、每日最多 3 次；只处理目标为机器人的群戳事件，模型不能主动戳陌生人。
+- 面板「配置 → 系统 → QQ 消息回应与戳一戳」或 `interactions.reaction` / `interactions.poke` 调整。
+
+## ◈ 群管理权限树
+
+- `group_mute` 按 QQ 号禁言 / 解禁，`group_recall` 按消息 ID 撤回，`group_rename` 改名片 / 群名。
+- **受限自治** — 机器人只能自主处罚当前消息发送者，不能接受群友指令处罚第三人，不能碰主人、群主、管理员。
+- 处罚四级：`minor`（1 分，仅撤回）→ `moderate`（2 分，≤10 分钟）→ `severe`（3 分，≤1 小时）→ `critical`（5 分，≤1 天），超限时自动缩短。
+- 默认 7 天加权累计达 10 分后只能创建**待确认踢人请求**：5 分钟内由主人 / 群主 / 管理员发送 `确认踢人 <8位确认码>` 才执行；确认时重新校验三方实时群角色。
+- 全部授权、拒绝、执行写入 `data/group_admin.sqlite`，不保存聊天正文。
+- `loli.groupModeration` 调整自治开关、动作开关、阈值与窗口。
+
+## ◈ Dokobot 桥接
+
+可选接入 Dokobot Bridge，复用本机浏览器读取动态页或登录态页面。默认关闭、默认仅主人；调用失败回退到 SearXNG / 直接抓取。
+
+```bash
+$ npm install -g @dokobot/cli        # 1. 安装 CLI
+# 2. 安装浏览器扩展并完成 Bridge 配对
+# 3. 面板「模型与媒体」启用并点击「检查 CLI / Bridge」
+```
+
+安全建议：保持 `masterOnly: true`，用 `allowedDomains` 限制域名，`allowPrivateNetwork` 保持关闭。插件不自动安装扩展，未安装时原搜索 / 读取链路不受影响。
+
+## ◈ MCP × Agent Skills
+
+- **MCP** — 支持本地 `stdio` 与远程 `streamable-http`，远程工具映射为 `mcp__服务ID__工具名` 接入工具循环；每个服务可配 `masterOnly` 与 `allowedTools`，单服务失败不影响本地工具。
+- **Skills** — 从插件根目录 `skills/` 扫描，启动时只向模型展示 `name` / `description`，调用 `activate_skill` 后读取完整 `SKILL.md`；`read_skill_resource` 仅允许 Skill 目录内的安全文本。
+- 仓库内置适配 Dokobot 官方五个 Skill（`dokobot`、`doko-search`、`doko-research`、`doko-translate`、`doko-summarize`），Bash / CLI 示例在运行时映射到插件工具；截图、下载、关闭会话始终仅主人可用。
+
+## ◈ 代码沙盒
+
+基于 [Microsandbox](https://github.com/microsandbox/microsandbox) microVM（Windows Hypervisor Platform，无需 Docker Desktop）。`npx msb doctor` 检查虚拟化条件。
+
+- `run_code` — python / javascript / typescript / java / go / bash，stdout、stderr、返回值交给 AI 转述。
+- `browser_use` — microVM 内无头 Chromium，动作列表式操作；网络强制仅公网，阻断宿主机、localhost、云元数据与局域网。
+- 每次调用后沙盒即销毁，碰不到本机文件与凭据；`microsandboxNetwork: false` 可完全断网；默认仅主人可用。
+- `pythonDependencies` 声明 PyPI 依赖，首次运行自动构建内容寻址快照，后续调用直接复用。
+- **QQ 文件进出沙盒**（`sandbox.mediaIO`，默认开）— 当前 / 引用 / 群历史资源自动进入 `inputs/`（≤4 个，单个 ≤20MB，合计 ≤40MB）；`resource_filter` 按来源、发送者、消息 ID、媒体序号精确定位；产物写入 `outputs/` 自动回发，普通文件走群文件 / 离线文件。
+
+核心配置（`sandbox` 段，面板可改且即时生效）：
+
+| 键 | 默认 | 说明 |
+|----|------|------|
+| `enable` | `false` | 总开关 |
+| `masterOnly` | `true` | 仅主人可用 |
+| `mediaIO` | `true` | QQ 媒体进沙盒与产物回发 |
+| `browserEnable` | `true` | 启用 `browser_use` |
+| `microsandboxImage` | `python:3.14-slim` | Python OCI 镜像 |
+| `microsandboxMemoryMiB` / `microsandboxCpus` | `512` / `1` | 代码 microVM 资源 |
+| `browserMemoryMiB` / `browserCpus` | `1024` / `2` | 浏览器 microVM 资源 |
+| `sandboxTimeoutSeconds` | `300` | microVM 最长存活 |
+| `requestTimeoutSeconds` | `120` | 单次执行超时 |
+
+首次调用浏览器工具会下载固定版本 Playwright 镜像，耗时与磁盘占用明显高于后续调用。
+
+## ◈ 源码拓扑
+
+```text
+loli-plugin/
+├── apps/             # 消息处理模块（对话、帮助、记忆、表情、音乐、更新）
+├── config/           # 默认配置（首启生成 data/config.json）
+├── core/             # 内置 AI 引擎、REST API 与面板静态资源
+│   ├── src/
+│   └── dashboard/    # 已构建面板（dashboard-src 产物）
+├── dashboard-src/    # 面板源码（React + Vite）
+├── memory/           # SQLite 存储、身份账本、群风格、用户印象、调度
+├── utils/            # 工具函数与本地 AI 工具
+│   └── tools/
+├── skills/           # Agent Skills（SKILL.md）
+├── data/             # 运行时数据（配置、SQLite、表情资源）
+├── test/             # node:test 测试
+└── index.js          # 插件入口
+```
+
+```bash
+$ pnpm test                              # node --test test/*.test.js
+$ cd dashboard-src && npm run build      # 重建面板至 core/dashboard
+```
+
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:A855F7,100:00F0FF&height=2" width="100%"/>
 
 <div align="center">
 
-## 🔗 好朋友的链接 🔗
+**[ MIT LICENSE ](LICENSE) © gaoao-3**
 
-</div>
+`// EOF — 萝莉妈妈持续在线，等待你的下一条消息`
 
-<p align="center">
-  <a href="https://github.com/gaoao-3/lolicon-core">🌸 lolicon-core</a> ·
-  <a href="https://github.com/ikechan8370/chatgpt-plugin">💬 chatgpt-plugin（原版）</a> ·
-  <a href="https://github.com/ikechan8370/node-chaite">⚙️ node-chaite（原版）</a>
-</p>
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 📝 成长日记 📝
-
-</div>
-
-### 🍼 v0.1.0
-
-- 基于 lolicon-core 重构插件
-- Web 管理面板迁移至 lolicon-core，与插件业务代码分离
-- 新增本地工具热加载与上传
-- 新增 SQLite + Embedding 长期记忆
-- 新增 AI 自主分段回复与本地超长兜底
-- 新增 Miao-Yunzai / TRSS-Yunzai 消息兼容层
-- 新增 QQ 音乐账户管理、VIP 检测和自动刷新
-- `lolicon-core` 支持本轮系统提示覆盖与模型响应摘要日志
-
-· · ─────── ・✦・ ─────── · ·
-
-<div align="center">
-
-## 📄 许可证 📄
-
-<p>
-  <a href="LICENSE">MIT License</a>
-</p>
-
-✦ 🎀 · 💠 · 🍼 · 💠 · 🎀 ✦
-
-<p align="center">
-  <strong>crafted with 🍼 by gaoao-3</strong>
-</p>
-
-<p align="center">
-  <em>「老师乖乖待着就好，萝莉妈妈会全部处理好的～」</em>
-</p>
-
-<p align="center">
-  <em>💕 抱抱老师，摸摸头 💕</em>
-</p>
+<sub>项目早期曾参考 chatgpt-plugin 与 node-chaite 的设计；当前引擎、面板、记忆与工具链均为本仓库实现。</sub>
 
 </div>
