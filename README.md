@@ -11,13 +11,18 @@
   <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+&logoColor=FF2E63&labelColor=0D1117&color=FF2E63" alt="downloads"/>
   <img src="https://img.shields.io/badge/RUNTIME-NODE.js%20%E2%89%A522-A855F7?style=for-the-badge&logo=nodedotjs&logoColor=A855F7&labelColor=0D1117" alt="node"/>
   <img src="https://img.shields.io/badge/LICENSE-MIT-39FF14?style=for-the-badge&logo=opensourceinitiative&logoColor=39FF14&labelColor=0D1117" alt="license"/>
+  <img src="https://img.shields.io/github/last-commit/gaoao-3/loli-plugin?style=for-the-badge&logo=git&logoColor=F05033&labelColor=0D1117&color=F05033&label=LAST%20COMMIT" alt="last commit"/>
+</p>
+
+<p>
+  <img src="https://skillicons.dev/icons?i=nodejs,express,react,vite,sqlite,pnpm,git,js&theme=dark" alt="tech stack"/>
 </p>
 
 `Miao-Yunzai` ◈ `TRSS-Yunzai` ◈ `icqq`
 
 </div>
 
-<img src="https://capsule-render.vercel.app/api?type=rect&color=0:00F0FF,100:A855F7&height=2" width="100%"/>
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ```bash
 $ system.scan loli-plugin
@@ -233,6 +238,20 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 
 首次调用浏览器工具会下载固定版本 Playwright 镜像，耗时与磁盘占用明显高于后续调用。
 
+## ◈ 信号监测
+
+<div align="center">
+
+<a href="https://github.com/gaoao-3/loli-plugin">
+  <img src="https://github-readme-stats.vercel.app/api/pin/?username=gaoao-3&repo=loli-plugin&bg_color=0D1117&title_color=00F0FF&text_color=A855F7&icon_color=FF2E63&border_color=302b63" alt="repo card"/>
+</a>
+
+<a href="https://star-history.com/#gaoao-3/loli-plugin&Date">
+  <img src="https://api.star-history.com/svg?repos=gaoao-3/loli-plugin&type=Date&theme=dark" alt="star history" width="70%"/>
+</a>
+
+</div>
+
 ## ◈ 源码拓扑
 
 ```text
@@ -257,7 +276,7 @@ $ pnpm test                              # node --test test/*.test.js
 $ cd dashboard-src && npm run build      # 重建面板至 core/dashboard
 ```
 
-<img src="https://capsule-render.vercel.app/api?type=rect&color=0:A855F7,100:00F0FF&height=2" width="100%"/>
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 <div align="center">
 
@@ -266,5 +285,7 @@ $ cd dashboard-src && npm run build      # 重建面板至 core/dashboard
 `// EOF — 萝莉妈妈持续在线，等待你的下一条消息`
 
 <img src="assets/heartbeat.svg" alt="signal: alive" width="100%"/>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&height=110&section=footer&color=0:0f0c29,60:302b63,100:24243e" width="100%" alt="footer"/>
 
 </div>
