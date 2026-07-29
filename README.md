@@ -8,10 +8,16 @@
 
 <p>
   <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&logo=github&logoColor=00F0FF&labelColor=0D1117&color=00F0FF" alt="release"/>
-  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+&logoColor=FF2E63&labelColor=0D1117&color=FF2E63" alt="downloads"/>
+  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=0D1117&color=FF2E63" alt="downloads"/>
   <img src="https://img.shields.io/badge/RUNTIME-NODE.js%20%E2%89%A522-A855F7?style=for-the-badge&logo=nodedotjs&logoColor=A855F7&labelColor=0D1117" alt="node"/>
   <img src="https://img.shields.io/badge/LICENSE-MIT-39FF14?style=for-the-badge&logo=opensourceinitiative&logoColor=39FF14&labelColor=0D1117" alt="license"/>
+</p>
+
+<p>
   <img src="https://img.shields.io/github/last-commit/gaoao-3/loli-plugin?style=for-the-badge&logo=git&logoColor=F05033&labelColor=0D1117&color=F05033&label=LAST%20COMMIT" alt="last commit"/>
+  <img src="https://img.shields.io/github/commit-activity/m/gaoao-3/loli-plugin?style=for-the-badge&labelColor=0D1117&color=00F0FF&label=COMMITS%2FM" alt="commit activity"/>
+  <img src="https://img.shields.io/github/languages/top/gaoao-3/loli-plugin?style=for-the-badge&logo=javascript&logoColor=FF2E63&labelColor=0D1117&color=FF2E63" alt="top language"/>
+  <img src="https://img.shields.io/github/repo-size/gaoao-3/loli-plugin?style=for-the-badge&labelColor=0D1117&color=A855F7&label=SIZE" alt="repo size"/>
 </p>
 
 <p>
@@ -34,8 +40,15 @@ $ system.scan loli-plugin
 > 表情库 / 轻互动 ....... ONLINE   # 视觉分类 · 表情回应 · 戳一戳
 ```
 
-群聊里它像一个正常群友：接话、分段回复、发表情、回戳一戳；
-后台里它记住每个群友是谁、说过什么、喜欢怎样的交流方式。
+<div align="center">
+
+*群聊里它像一个正常群友：接话、分段回复、发表情、回戳一戳*
+
+*后台里它记住每个群友是谁、说过什么、喜欢怎样的交流方式*
+
+</div>
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 功能矩阵
 
@@ -52,6 +65,8 @@ $ system.scan loli-plugin
 | ⌬ MCP & Skills | 接入 stdio / streamable-http MCP 服务，渐进加载 SKILL.md |
 | ⌬ 代码沙盒 | microVM 执行六种语言 + 无头浏览器，QQ 文件进出沙盒 |
 | ⌬ Dokobot | 可选复用本机浏览器登录态做搜索与网页读取 |
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 部署序列
 
@@ -103,6 +118,8 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 
 主人身份：插件读取宿主事件的 `isMaster` 自动识别，也可用 `loli.masterIdentity` 固定 QQ 号与称呼。
 
+<img src="assets/divider.svg" width="100%" alt="divider"/>
+
 ## ◈ 指令终端
 
 | 指令 | 说明 |
@@ -124,6 +141,8 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 | `#loli更新` / `#loli强制更新` | 从 GitHub 拉取更新 |
 
 群聊中 @ 机器人或按配置的触发方式同样可以唤起对话。
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 控制台 · Web 面板
 
@@ -150,6 +169,8 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 
 `data/config.json` 支持热加载：手改文件约 0.5 秒内生效，无需重启（已打开的面板页面需手动刷新）。
 
+<img src="assets/divider.svg" width="100%" alt="divider"/>
+
 ## ◈ 记忆核心
 
 五层链路，全部位于插件数据目录内：
@@ -170,6 +191,8 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 
 模型会话历史单独保存在 `data/history.sqlite`，`llm.historyRetentionDays` 默认 30 天，启动时及每 6 小时自动清理，`0` 关闭。
 
+<img src="assets/divider.svg" width="100%" alt="divider"/>
+
 ## ◈ 表情库协议
 
 - 主人发送的小黄脸、超级表情、收藏表情、图片表情自动收录到 `data/stickers.sqlite`。
@@ -179,11 +202,15 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 - `stickers.nativeSuperface` 默认开启；若出现「日志成功但客户端不可见」，设为 `false` 降级发送。
 - 收藏夹 / 推荐页无法直接读取：商城表情需先发给机器人收录。
 
+<img src="assets/divider.svg" width="100%" alt="divider"/>
+
 ## ◈ 轻互动模块
 
 - **消息回应** — 默认 25% 回合开放 `[reaction:语义]`，转换为 QQ 官方系统表情回应；固定语义白名单，与图片表情互斥，同群友冷却 45 秒。
 - **戳一戳** — 用户先戳时默认 35% 概率回戳，同群友冷却 5 分钟、每日最多 3 次；只处理目标为机器人的群戳事件，模型不能主动戳陌生人。
 - 面板「配置 → 系统 → QQ 消息回应与戳一戳」或 `interactions.reaction` / `interactions.poke` 调整。
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 群管理权限树
 
@@ -193,6 +220,8 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 - 默认 7 天加权累计达 10 分后只能创建**待确认踢人请求**：5 分钟内由主人 / 群主 / 管理员发送 `确认踢人 <8位确认码>` 才执行；确认时重新校验三方实时群角色。
 - 全部授权、拒绝、执行写入 `data/group_admin.sqlite`，不保存聊天正文。
 - `loli.groupModeration` 调整自治开关、动作开关、阈值与窗口。
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ Dokobot 桥接
 
@@ -206,11 +235,15 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 
 安全建议：保持 `masterOnly: true`，用 `allowedDomains` 限制域名，`allowPrivateNetwork` 保持关闭。插件不自动安装扩展，未安装时原搜索 / 读取链路不受影响。
 
+<img src="assets/divider.svg" width="100%" alt="divider"/>
+
 ## ◈ MCP × Agent Skills
 
 - **MCP** — 支持本地 `stdio` 与远程 `streamable-http`，远程工具映射为 `mcp__服务ID__工具名` 接入工具循环；每个服务可配 `masterOnly` 与 `allowedTools`，单服务失败不影响本地工具。
 - **Skills** — 从插件根目录 `skills/` 扫描，启动时只向模型展示 `name` / `description`，调用 `activate_skill` 后读取完整 `SKILL.md`；`read_skill_resource` 仅允许 Skill 目录内的安全文本。
 - 仓库内置适配 Dokobot 官方五个 Skill（`dokobot`、`doko-search`、`doko-research`、`doko-translate`、`doko-summarize`），Bash / CLI 示例在运行时映射到插件工具；截图、下载、关闭会话始终仅主人可用。
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 代码沙盒
 
@@ -222,7 +255,8 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 - `pythonDependencies` 声明 PyPI 依赖，首次运行自动构建内容寻址快照，后续调用直接复用。
 - **QQ 文件进出沙盒**（`sandbox.mediaIO`，默认开）— 当前 / 引用 / 群历史资源自动进入 `inputs/`（≤4 个，单个 ≤20MB，合计 ≤40MB）；`resource_filter` 按来源、发送者、消息 ID、媒体序号精确定位；产物写入 `outputs/` 自动回发，普通文件走群文件 / 离线文件。
 
-核心配置（`sandbox` 段，面板可改且即时生效）：
+<details>
+<summary><b>▸ CONFIG::SANDBOX</b> — 核心配置表（面板可改，即时生效）</summary>
 
 | 键 | 默认 | 说明 |
 |----|------|------|
@@ -236,7 +270,11 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 | `sandboxTimeoutSeconds` | `300` | microVM 最长存活 |
 | `requestTimeoutSeconds` | `120` | 单次执行超时 |
 
+</details>
+
 首次调用浏览器工具会下载固定版本 Playwright 镜像，耗时与磁盘占用明显高于后续调用。
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 信号监测
 
@@ -250,7 +288,19 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
   <img src="https://api.star-history.com/svg?repos=gaoao-3/loli-plugin&type=Date&theme=dark" alt="star history" width="70%"/>
 </a>
 
+<br/><br/>
+
+<img src="https://github-profile-trophy.vercel.app/?username=gaoao-3&theme=radical&no-frame=true&no-bg=true&margin-w=6&column=7" alt="trophies" width="90%"/>
+
+<br/><br/>
+
+<a href="https://github.com/gaoao-3/loli-plugin/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=gaoao-3/loli-plugin" alt="contributors"/>
+</a>
+
 </div>
+
+<img src="assets/divider.svg" width="100%" alt="divider"/>
 
 ## ◈ 源码拓扑
 
