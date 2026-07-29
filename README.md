@@ -3,21 +3,14 @@
 <img src="https://capsule-render.vercel.app/api?type=venom&height=220&text=LOLI-PLUGIN&fontSize=64&fontColor=00F0FF&stroke=A855F7&strokeWidth=2&color=0:0f0c29,50:302b63,100:24243e&animation=fadeIn" alt="loli-plugin" width="100%"/>
 
 <a href="https://github.com/gaoao-3/loli-plugin">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&duration=2800&pause=1200&color=00F0FF&center=true&vCenter=true&multiline=true&repeat=true&width=720&height=60&lines=%24+./init+--target%3DYunzai+--mode%3Dcompanion;AI+%C2%B7+MEMORY+%C2%B7+TOOLS+%C2%B7+SANDBOX+%E2%80%94+ALL+SYSTEMS+ONLINE" alt="typing" />
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&duration=2800&pause=2000&color=00F0FF&center=true&vCenter=true&repeat=true&width=520&height=40&lines=%24+./init+--target%3DYunzai+--mode%3Dcompanion" alt="typing" />
 </a>
 
 <p>
-  <img src="https://img.shields.io/github/v/release/gaoao-3/loli-plugin?style=for-the-badge&logo=github&logoColor=00F0FF&labelColor=0D1117&color=00F0FF" alt="release"/>
-  <img src="https://img.shields.io/github/downloads/gaoao-3/loli-plugin/total?style=for-the-badge&labelColor=0D1117&color=FF2E63" alt="downloads"/>
   <img src="https://img.shields.io/badge/RUNTIME-NODE.js%20%E2%89%A522-A855F7?style=for-the-badge&logo=nodedotjs&logoColor=A855F7&labelColor=0D1117" alt="node"/>
   <img src="https://img.shields.io/badge/LICENSE-MIT-39FF14?style=for-the-badge&logo=opensourceinitiative&logoColor=39FF14&labelColor=0D1117" alt="license"/>
-</p>
-
-<p>
   <img src="https://img.shields.io/github/last-commit/gaoao-3/loli-plugin?style=for-the-badge&logo=git&logoColor=F05033&labelColor=0D1117&color=F05033&label=LAST%20COMMIT" alt="last commit"/>
-  <img src="https://img.shields.io/github/commit-activity/m/gaoao-3/loli-plugin?style=for-the-badge&labelColor=0D1117&color=00F0FF&label=COMMITS%2FM" alt="commit activity"/>
-  <img src="https://img.shields.io/github/languages/top/gaoao-3/loli-plugin?style=for-the-badge&logo=javascript&logoColor=FF2E63&labelColor=0D1117&color=FF2E63" alt="top language"/>
-  <img src="https://img.shields.io/github/repo-size/gaoao-3/loli-plugin?style=for-the-badge&labelColor=0D1117&color=A855F7&label=SIZE" alt="repo size"/>
+  <img src="https://img.shields.io/github/repo-size/gaoao-3/loli-plugin?style=for-the-badge&labelColor=0D1117&color=00F0FF&label=SIZE" alt="repo size"/>
 </p>
 
 <p>
