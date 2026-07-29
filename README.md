@@ -265,6 +265,6 @@ $ cd dashboard-src && npm run build      # 重建面板至 core/dashboard
 
 `// EOF — 萝莉妈妈持续在线，等待你的下一条消息`
 
-<sub>项目早期曾参考 chatgpt-plugin 与 node-chaite 的设计；当前引擎、面板、记忆与工具链均为本仓库实现。</sub>
+<img src="assets/heartbeat.svg" alt="signal: alive" width="100%"/>
 
 </div>

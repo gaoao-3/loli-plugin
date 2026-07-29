@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="120" viewBox="0 0 800 120">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="pulse" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00F0FF"/>
+      <stop offset="0.45" stop-color="#FF2E63"/>
+      <stop offset="0.55" stop-color="#FF2E63"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ECG baseline with twin spikes, drawn in a loop -->
+  <path d="M0 60 H230 L246 60 L258 26 L276 96 L292 40 L304 60 H496 L512 60 L524 26 L542 96 L558 40 L570 60 H800"
+        fill="none" stroke="url(#pulse)" stroke-width="2.5" stroke-linejoin="round"
+        filter="url(#glow)" stroke-dasharray="1500" stroke-dashoffset="1500">
+    <animate attributeName="stroke-dashoffset" values="1500;0;0;-1500"
+             keyTimes="0;0.45;0.55;1" dur="4s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- beating heart -->
+  <g transform="translate(400 58)" filter="url(#glow)">
+    <path d="M0 11 C0 4 -7 -3 -15 -3 C-25 -3 -29 6 -23 14 L0 33 L23 14 C29 6 25 -3 15 -3 C7 -3 0 4 0 11 Z"
+          fill="#FF2E63">
+      <animateTransform attributeName="transform" type="scale"
+                        values="1;1.28;1;1.18;1;1"
+                        keyTimes="0;0.12;0.24;0.36;0.5;1"
+                        dur="1.6s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- signal label -->
+  <text x="400" y="112" text-anchor="middle" font-family="monospace" font-size="13" fill="#00F0FF" opacity="0.85">
+    SIGNAL: ALIVE // 萝莉妈妈心跳监测中
+    <animate attributeName="opacity" values="0.85;0.35;0.85" dur="1.6s" repeatCount="indefinite"/>
+  </text>
+</svg>
