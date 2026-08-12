@@ -67,7 +67,7 @@ export class OpenAIClient extends AbstractClient {
 
     // 思考模式 (OpenAI o-series reasoning_effort)
     if (options.enableReasoning) {
-      const effortMap = { OFF: 'minimal', LOW: 'low', MEDIUM: 'medium', HIGH: 'high' }
+      const effortMap = { OFF: 'minimal', MINIMAL: 'minimal', LOW: 'low', MEDIUM: 'medium', HIGH: 'high' }
       const level = String(options.thinkingLevel || options.reasoningEffort || 'LOW').toUpperCase()
       const effort = effortMap[level] || 'low'
       if (effort === 'minimal') {

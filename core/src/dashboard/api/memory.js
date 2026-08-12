@@ -9,6 +9,7 @@ function unavailableStats () {
     learningVersions: 0,
     learnedMembers: 0,
     memberMemoryVersions: 0,
+    embeddings: 0,
     dbPath: ''
   }
 }
@@ -37,7 +38,7 @@ export default function memoryRoutes (ctx) {
         return res.type('text/markdown').send(await ctx.memory.getMarkdown())
       }
       const stats = await readStats(ctx)
-      res.type('text/markdown').send(`# 记忆数据库\n\n- 原始消息: ${stats.messages}\n- 身份账本: ${stats.identities}\n- 已学习群: ${stats.learnedGroups}\n- 群风格版本: ${stats.learningVersions}\n- 已学习群友: ${stats.learnedMembers}\n- 群友记忆版本: ${stats.memberMemoryVersions}\n- 数据库: ${stats.dbPath || '未接入'}\n`)
+      res.type('text/markdown').send(`# 记忆数据库\n\n- 原始消息: ${stats.messages}\n- 身份账本: ${stats.identities}\n- 已学习群: ${stats.learnedGroups}\n- 群风格版本: ${stats.learningVersions}\n- 已学习群友: ${stats.learnedMembers}\n- 群友记忆版本: ${stats.memberMemoryVersions}\n- Gemini 记忆向量: ${stats.embeddings || 0}\n- 数据库: ${stats.dbPath || '未接入'}\n`)
     } catch (err) {
       next(err)
     }

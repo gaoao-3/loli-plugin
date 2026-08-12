@@ -6,14 +6,18 @@ import { LoliStorage } from './storage.js'
 import { ToolLoader } from './loaders/tools.js'
 import { GeminiClient } from './clients/gemini.js'
 import { OpenAIClient } from './clients/openai.js'
-import { AnythingLLMClient } from './clients/anythingllm.js'
+import { AntigravityClient } from './clients/antigravity.js'
+import { GcilClient } from './clients/gcil.js'
 import { v4 as uuidv4 } from 'uuid'
 import { Memory } from './memory/index.js'
 
 /** 渠道适配器注册表 */
 const CLIENT_REGISTRY = {
   gemini: GeminiClient,
-  openai: OpenAIClient
+  aistudio: GeminiClient,
+  gcil: GcilClient,
+  openai: OpenAIClient,
+  antigravity: AntigravityClient
 }
 
 export class LoliEngine {
@@ -27,8 +31,6 @@ export class LoliEngine {
   #memory = null
   /** @type {AbstractClient|null} */
   #currentClient = null
-  /** @type {AnythingLLMClient|null} */
-  #anythingllm = null
   /** @type {import('node:http').Server|null} */
   #dashboardServer = null
   /** @type {Object} */
@@ -41,7 +43,6 @@ export class LoliEngine {
    * @param {Function} [opts.logger] - (msg) => void
    * @param {boolean} [opts.enableMemory=true]
    * @param {Object} [opts.master] - 主人配置 { userId, label, aliases }
-   * @param {Object} [opts.anythingllm] - AnythingLLM 配置 { baseUrl, apiKey, workspace }
    */
   constructor (opts = {}) {
     this.#opts = opts
@@ -56,14 +57,6 @@ export class LoliEngine {
         extractFn: (prompt) => this.#extractMemory(prompt),
         logger: opts.logger,
         master: opts.master
-      })
-    }
-    if (opts.anythingllm?.baseUrl && opts.anythingllm?.apiKey) {
-      this.#anythingllm = new AnythingLLMClient({
-        baseUrl: opts.anythingllm.baseUrl,
-        apiKey: opts.anythingllm.apiKey,
-        workspace: opts.anythingllm.workspace || 'default',
-        logger: opts.logger
       })
     }
   }
@@ -99,8 +92,7 @@ export class LoliEngine {
         timestamp: Date.now()
       }
       const result = await this.#currentClient._sendMessage([msg], {
-        model: 'gemini-2.5-flash',
-        temperature: 0.2
+        model: 'gemini-2.5-flash'
       })
       return (result.content || [])
         .filter(c => c.type === 'text' || c.type === 'reasoning')
@@ -127,6 +119,8 @@ export class LoliEngine {
 
     const opts = {
       storage: this.storage,
+      dataDir: this.#opts.dataDir,
+      channelId,
       options: channel.options || {},
       logger: this.#opts.logger
     }
@@ -205,10 +199,10 @@ export class LoliEngine {
     // 会话 ID
     const cid = conversationId || uuidv4()
 
-    // 工具按请求、按回合解析。Skill 激活状态只存在于本次请求，
-    // 激活后下一回合才暴露其 allowed-tools，避免全量 schema 常驻。
+    // 工具按请求、按回合解析。Skill 激活状态只存在于本次请求，用于后续开放
+    // read_skill_resource；业务 Tool 的可用性不由 Skill 控制。
     const toolState = { activatedSkills: new Set() }
-    const toolProvider = async ({ round = 0 } = {}) => {
+    const resolveTools = async (round) => {
       const availableTools = this.toolLoader.getAll()
       const context = {
         event,
@@ -238,6 +232,7 @@ export class LoliEngine {
       }
       return [...localTools, ...externalTools]
     }
+    const toolProvider = async ({ round = 0 } = {}) => resolveTools(round)
 
     // 从事件中补全 userId / groupId
     if (event) {
@@ -282,10 +277,15 @@ export class LoliEngine {
       }
     }
 
-    // 发送（注入 AnythingLLM 客户端到工具上下文）
+    // 发送（注入本轮消息和工具执行上下文）
     // 工具除了原始事件，也需要拿到模型本轮实际看到的消息内容。
     // 例如群聊历史图片已经被压缩为 base64 注入 userMessage，原始 event 中并不存在。
-    const toolContext = { event, userMessage, anythingllm: this.#anythingllm, executionReports: [] }
+    const toolContext = {
+      event,
+      userMessage,
+      executionReports: [],
+      fetchedResources: []
+    }
     const result = await client.sendMessage({
       userMessage,
       conversationId: cid,
@@ -333,29 +333,6 @@ export class LoliEngine {
       userMessage: userMsg
     })
     return result.finalText
-  }
-
-  // ─── AnythingLLM 集成 ────────────────────────────
-
-  /**
-   * 设置 AnythingLLM 客户端（运行时注入）
-   * @param {Object} opts
-   * @param {string} opts.baseUrl
-   * @param {string} opts.apiKey
-   * @param {string} [opts.workspace='default']
-   */
-  setAnythingLLM (opts) {
-    this.#anythingllm = new AnythingLLMClient({
-      baseUrl: opts.baseUrl,
-      apiKey: opts.apiKey,
-      workspace: opts.workspace || 'default',
-      logger: this.#opts.logger
-    })
-  }
-
-  /** 获取 AnythingLLM 客户端实例 */
-  getAnythingLLM () {
-    return this.#anythingllm
   }
 
   // ─── 可选管理面板 ──────────────────────────────
@@ -407,8 +384,8 @@ export class LoliEngine {
     return this.storage.clearHistory(conversationId)
   }
 
-  async saveChannel (ch) {
-    const saved = await this.storage.saveChannel(ch)
+  async saveChannel (ch, options) {
+    const saved = await this.storage.saveChannel(ch, options)
     this.#clients.delete(saved.id)
     return saved
   }
@@ -417,7 +394,7 @@ export class LoliEngine {
     this.#clients.delete(id)
     return this.storage.deleteChannel(id)
   }
-  savePreset (p) { return this.storage.savePreset(p) }
+  savePreset (p, options) { return this.storage.savePreset(p, options) }
   listPresets () { return this.storage.listPresets() }
   getPreset (id) { return this.storage.getPreset(id) }
 

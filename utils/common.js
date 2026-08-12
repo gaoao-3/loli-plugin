@@ -118,9 +118,11 @@ function buildSegmentTextMap (segment = {}, options = {}) {
     case 'text':
       return data.text || ''
     case 'at': {
-      const qq = data.qq || data.id
-      const name = data.text || data.name || qq
-      return qq === 'all' || qq === 'everyone' ? '@全体成员' : `@${name || '未知'}`
+      const qq = String(data.qq || data.id || data.user_id || '')
+      if (['all', 'everyone'].includes(qq.toLowerCase())) return '@全体成员'
+      const rawName = String(data.text || data.name || '').replace(/^@/u, '').trim()
+      const name = rawName && rawName !== qq ? rawName : '某人'
+      return `@${name}(QQ:${qq || '未知'})`
     }
     case 'image': {
       const summary = pickFirstText(data.summary || data.file || data.url)

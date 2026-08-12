@@ -3,7 +3,7 @@ import { api } from '../api'
 import Icon from '../icons.jsx'
 import Modal from '../Modal.jsx'
 
-const THINKING_LEVELS = ['OFF', 'LOW', 'MEDIUM', 'HIGH']
+const THINKING_LEVELS = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH']
 
 const emptyForm = {
   id: '', name: '', channelId: '', model: '', prompt: '',
@@ -14,6 +14,8 @@ const emptyForm = {
 export default function Presets({ presets, channels, refresh, showToast, runTask }) {
   const [modalVisible, setModalVisible] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const selectedChannel = channels.find(channel => channel.id === form.channelId)
+  const usesGoogleSamplingDefaults = ['gemini', 'aistudio', 'antigravity'].includes(selectedChannel?.adapterType)
 
   const showSaveResult = (result, successMessage) => {
     showToast(result?.configMirrorPersisted === false
@@ -40,7 +42,9 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
       maxTokens: p.sendMessageOption?.maxTokens ?? 2048,
       topP: p.sendMessageOption?.topP ?? '',
       enableReasoning: p.sendMessageOption?.enableReasoning !== false,
-      thinkingLevel: p.sendMessageOption?.thinkingLevel || 'LOW',
+      thinkingLevel: p.sendMessageOption?.thinkingLevel === 'OFF'
+        ? 'MINIMAL'
+        : (p.sendMessageOption?.thinkingLevel || 'LOW'),
       isEdit: true
     })
     setModalVisible(true)
@@ -53,17 +57,22 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
     }
     const existing = form.isEdit ? presets.find(p => p.id === form.id) : null
     const topPNum = form.topP !== '' ? Number(form.topP) : undefined
+    const samplingOptions = usesGoogleSamplingDefaults
+      ? {}
+      : {
+          temperature: Number(form.temperature),
+          ...(topPNum !== undefined && !Number.isNaN(topPNum) ? { topP: topPNum } : {})
+        }
     const payload = {
       id: form.id.trim(),
       name: form.name.trim(),
       channelId: form.channelId,
       sendMessageOption: {
         model: form.model.trim(),
-        temperature: Number(form.temperature),
         maxTokens: Number(form.maxTokens),
         enableReasoning: form.enableReasoning,
         thinkingLevel: form.thinkingLevel,
-        ...(topPNum !== undefined && !Number.isNaN(topPNum) ? { topP: topPNum } : {})
+        ...samplingOptions
       },
       systemPrompt: { content: form.prompt },
       status: existing?.status || 'enabled'
@@ -92,24 +101,27 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
   return (
     <div className="pane-content select-text">
       <div className="flex-row justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-strong">// 预设角色管理</h2>
+        <h2 className="page-hero-title">预设角色管理</h2>
         <button className="btn btn-primary" onClick={openAdd}>
           <Icon name="plus" size={12} />新建预设
         </button>
       </div>
 
-      <div className="card-grid">
+      <div className="card-grid collage-grid">
         {presets.length === 0 && (
           <div className="col-span-full py-12 text-center text-faint text-sm font-semibold">暂无已配置的角色预设</div>
         )}
         {presets.map(p => (
           <div key={p.id} className="card flex-column justify-between hover-border">
             <div className="flex-row justify-between items-start mb-3">
-              <div>
-                <h3 className="text-sm font-bold text-strong">{p.name}</h3>
-                <p className="text-[10px] font-mono text-muted mt-0.5">ID: {p.id}</p>
+              <div className="flex-row items-center gap-2.5 min-w-0">
+                <span className="avatar-bubble"><Icon name="presets" size={16} /></span>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-strong truncate">{p.name}</h3>
+                  <p className="text-[10px] font-mono text-muted mt-0.5">ID: {p.id}</p>
+                </div>
               </div>
-              <span className={`badge ${p.status === 'enabled' ? 'badge-success' : 'badge-gray'}`}>{p.status === 'enabled' ? '已启用' : '已禁用'}</span>
+              <span className={`badge badge-stamp ${p.status === 'enabled' ? 'badge-success' : 'badge-gray'}`}>{p.status === 'enabled' ? '已启用' : '已禁用'}</span>
             </div>
 
             <div className="flex-column gap-1.5 text-xs mb-4">
@@ -150,7 +162,7 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
               <div className="md:col-span-3 flex-column h-full overflow-y-auto p-4 border-r preset-pane-left">
                 <div className="flex-column gap-1.5 h-full">
                   <div className="flex-row justify-between items-center">
-                    <label className="text-[10px] text-accent font-bold tracking-wide uppercase">系统指示 (System Instructions)</label>
+                    <label className="pane-label uppercase">系统指示 (System Instructions)</label>
                     <span className="text-[9px] text-muted font-mono">System Prompt Editor</span>
                   </div>
                   <textarea
@@ -165,9 +177,8 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
               {/* Right: params */}
               <div className="md:col-span-2 flex-column h-full overflow-y-auto p-4 justify-between bg-inset preset-pane-right">
                 <div className="flex-column gap-4">
-                  <div className="flex-row items-center gap-1.5 pb-1.5 border-b">
-                    <Icon name="sliders" size={12} className="text-accent" />
-                    <span className="text-[10px] font-bold text-strong uppercase tracking-wide">参数控制 (Settings)</span>
+                  <div className="pb-1.5 border-b">
+                    <span className="pane-label uppercase">参数控制 (Settings)</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -193,28 +204,32 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
                     <input value={form.model} onChange={set('model')} type="text" placeholder="gemini-2.5-flash" className="form-input" />
                   </div>
 
-                  <div className="flex-column gap-1">
-                    <div className="flex-row justify-between items-center text-[10px]">
-                      <span className="text-muted font-medium">温度 (Temperature)</span>
-                      <span className="font-mono text-accent bg-accent-soft px-1.5 py-0.2 rounded font-bold">{Number(form.temperature).toFixed(1)}</span>
+                  {!usesGoogleSamplingDefaults && (
+                    <div className="flex-column gap-1">
+                      <div className="flex-row justify-between items-center text-[10px]">
+                        <span className="text-muted font-medium">温度 (Temperature)</span>
+                        <span className="param-chip">{Number(form.temperature).toFixed(1)}</span>
+                      </div>
+                      <input value={form.temperature} onChange={set('temperature')} type="range" min="0.0" max="2.0" step="0.1" className="ai-range-slider w-full" />
                     </div>
-                    <input value={form.temperature} onChange={set('temperature')} type="range" min="0.0" max="2.0" step="0.1" className="ai-range-slider w-full" />
-                  </div>
+                  )}
 
                   <div className="flex-column gap-1">
                     <div className="flex-row justify-between items-center text-[10px]">
                       <span className="text-muted font-medium">长度 (Max Output Tokens)</span>
-                      <span className="font-mono text-accent bg-accent-soft px-1.5 py-0.2 rounded font-bold">{form.maxTokens}</span>
+                      <span className="param-chip">{form.maxTokens}</span>
                     </div>
                     <input value={form.maxTokens} onChange={set('maxTokens')} type="range" min="256" max="8192" step="256" className="ai-range-slider w-full" />
                   </div>
 
-                  <div className="flex-column gap-1">
-                    <label className="text-[10px] text-muted font-medium">核采样比率 (Top P, 留空默认)</label>
-                    <input value={form.topP} onChange={set('topP')} type="text" placeholder="可选输入，例如 0.95" className="form-input" />
-                  </div>
+                  {!usesGoogleSamplingDefaults && (
+                    <div className="flex-column gap-1">
+                      <label className="text-[10px] text-muted font-medium">核采样比率 (Top P, 留空默认)</label>
+                      <input value={form.topP} onChange={set('topP')} type="text" placeholder="可选输入，例如 0.95" className="form-input" />
+                    </div>
+                  )}
 
-                  <div className="flex-column gap-2 p-2 bg-deep border border-default rounded-lg">
+                  <div className="flex-column gap-2 p-2 bg-deep border border-default rounded-lg reasoning-card">
                     <div className="flex-row justify-between items-center">
                       <div className="flex-column">
                         <span className="text-[11px] font-semibold text-strong">启动思考模型推理</span>
@@ -223,7 +238,7 @@ export default function Presets({ presets, channels, refresh, showToast, runTask
                       <button className={`switch${form.enableReasoning ? ' active' : ''}`} onClick={() => setVal('enableReasoning', !form.enableReasoning)}><span></span></button>
                     </div>
                     <div className="flex-column gap-1.5 border-t pt-2">
-                      <label className="text-[9px] text-muted font-medium">思考字数额度 (Thinking Level)</label>
+                      <label className="text-[9px] text-muted font-medium">思考等级 (Thinking Level)</label>
                       <select value={form.thinkingLevel} onChange={set('thinkingLevel')} className="form-select p-1 text-[10px]">
                         {THINKING_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                       </select>

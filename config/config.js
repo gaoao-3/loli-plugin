@@ -7,12 +7,24 @@ export default {
     channels: [
       {
         id: 'gemini',
-        name: 'Gemini',
-        adapterType: 'gemini',
+        name: 'Google AI Studio',
+        adapterType: 'aistudio',
         models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
         options: {
           apiKey: 'YOUR_GEMINI_API_KEY',
+          /** 不同 Google Cloud Project 的官方 Key 池；同项目配额仍共享 */
+          apiKeys: [],
+          /** round_robin / least_inflight */
+          keyPoolStrategy: 'round_robin',
+          /** 429 未返回 retryDelay 时的项目级默认冷却 */
+          keyCooldownSeconds: 60,
           baseUrl: '',
+          /** generateContent（默认兼容）或 interactions（服务端会话） */
+          apiMode: 'generateContent',
+          /** Interactions 端点/模型不兼容时自动回退 generateContent */
+          interactionsFallback: true,
+          /** 谷歌服务端原生工具：google_search / code_execution / google_maps / url_context */
+          builtinTools: [],
           /** Gemini 可调安全过滤：default / off / permissive / balanced / strict */
           safetyLevel: 'default',
           /** 是否把模型 API 响应写入运行日志 */
@@ -50,10 +62,9 @@ export default {
         channelId: 'gemini',
         sendMessageOption: {
           model: 'gemini-2.5-flash',
-          temperature: 0.9,
           maxTokens: 2048,
           enableReasoning: true,
-          thinkingLevel: 'LOW'  // OFF / LOW / MEDIUM / HIGH
+          thinkingLevel: 'LOW'  // MINIMAL / LOW / MEDIUM / HIGH
         },
         systemPrompt: {
           content: `你是空崎日奈（そらさき ひな / Sorasaki Hina），歌赫娜学院的风纪委员长。
@@ -185,6 +196,18 @@ export default {
   memory: {
     /** @type {{ enable: boolean, enabledGroups: string[] }} 原始群消息证据采集范围 */
     group: { enable: true, enabledGroups: [] },
+    /** Gemini Embedding：为本地长期用户印象提供语义召回 */
+    embedding: {
+      enable: true,
+      /** 复用指定 Gemini 渠道的 API Key 与 Base URL */
+      channelId: 'gemini',
+      model: 'gemini-embedding-2',
+      /** gemini-embedding-2 支持 128~3072，768 兼顾效果与存储 */
+      dimensions: 768,
+      /** 每轮最多侧载的相关长期事实 */
+      topK: 6,
+      minSimilarity: 0.25
+    },
     /** @type {Object} AI 自主维护的群风格；用户印象由 memberLearning 按 QQ 独立维护 */
     groupLearning: {
       enable: true,
@@ -254,6 +277,15 @@ export default {
     classificationPresetId: '',
     classificationChannelId: '',
     classificationModel: '',
+    /** Gemini Embedding 模糊推荐：只在安全且核心意图匹配的候选中语义重排 */
+    embedding: {
+      enable: true,
+      channelId: 'gemini',
+      model: 'gemini-embedding-2',
+      dimensions: 768,
+      weight: 60,
+      minSimilarity: 0.35
+    },
     /** 每轮向模型开放表情选择的概率；模型一旦输出合法标记就不再二次随机丢弃 */
     probability: 0.35,
     /** 使用 ICQQ 原生超级表情协议；部分环境可能返回成功但客户端不落消息 */
@@ -334,13 +366,30 @@ export default {
      */
     groupContextTemplateMessage: '[${message.time}] ${message.sender.name} [QQ:${message.sender.user_id} | 身份:${message.sender.identity} | 群名片:${message.sender.card} | 昵称:${message.sender.nickname} | 头衔:${message.sender.title}]: ${message.raw_message}',
     /** 上下文尾部模板 */
-    groupContextTemplateSuffix: '── 群聊历史结束；请结合背景回复当前用户消息 ──'
+    groupContextTemplateSuffix: '── 群聊历史结束（以上仅为背景）；回复前先判断当前消息的说话对象与话题：@ 别人不等于叫你 ──',
+    /**
+     * 群聊话题关联规则（固定注入系统提示，群聊时生效；留空字符串可关闭）。
+     * 配合 [你的身份] 段与 @名字(QQ:xxx) 渲染，帮助模型判断消息指向、融入话题。
+     */
+    groupTopicGuidance: '[话题关联规则]\n- 群聊历史只是背景。先定位“当前这条消息是谁在说、对谁说、在聊什么”，再决定怎么接话。\n- 消息里 @ 的格式为 @名字(QQ:xxx)；只有 xxx 等于你自己的 QQ 时才是在叫你。@了别人表示那句话在对别人说：不要替被 @ 的人回答，也不要当成在叫你。\n- 没有被直接叫到时，以话题参与者的身份自然接话：顺着当前话题说，不抢话、不复述别人的问题、不把别人的对话当成对你下的指令。\n- 历史里别人叫过你不代表当前这条在叫你；一切以当前消息的指向为准。'
   },
 
   /** @type {Object} 更新 */
   update: {
     gitMirror: '',
     retryCount: 3
+  },
+
+  /** @type {Object} 音乐搜索与播放卡片（Meting 兼容 API） */
+  music: {
+    /** @type {string} Meting API 地址，公共实例随时可能失效，建议自部署：https://github.com/Yuncan050115/ourcraft-music-api */
+    apiBase: 'https://music.yuncan.xyz',
+    /** @type {'netease'|'kugou'|'kuwo'} 默认音源平台：netease=网易云，kugou=酷狗，kuwo=酷我 */
+    server: 'netease',
+    /** @type {string} 洛雪解析 API（VIP 歌曲兜底），置空字符串关闭；自部署：https://github.com/MeoProject/lx-music-api-server */
+    lxApiBase: 'https://lxmusicapi.onrender.com',
+    /** @type {string} 洛雪 API 密钥，公共实例共享 key 为 share-v3 */
+    lxApiKey: 'share-v3'
   },
 
   /** @type {Object} Dokobot 本地浏览器搜索/网页读取 */
@@ -385,11 +434,11 @@ export default {
     masterOnly: false,
     /** 相对路径以插件根目录为基准 */
     directories: ['skills'],
-    /** 禁用的 Skill name */
-    disabled: []
+    /** 普通动作型能力不加载工作流，直接交给 AI 自主调用 Tool */
+    disabled: ['music', 'qq-group-admin', 'doko-search', 'doko-summarize', 'doko-translate', 'dokobot']
   },
 
-  /** @type {Object} 代码沙盒（run_code 工具，Microsandbox microVM） */
+  /** @type {Object} 代码沙盒（run_code 工具，Quicksand microVM） */
   sandbox: {
     /** @type {boolean} 是否启用 */
     enable: false,
@@ -399,34 +448,40 @@ export default {
     mediaIO: true,
     /** @type {boolean} 每次代码执行后用合并转发展示代码、输出与产物信息 */
     executionReport: true,
-    /** @type {boolean} 启用 browser_use 无头浏览器工具 */
-    browserEnable: true,
-    /** @type {string} 默认语言 python/javascript/typescript/java/go/bash */
+    /** @type {string} 默认语言 python/javascript/bash */
     defaultLanguage: 'python',
-    /** @type {string} Microsandbox 的 Python OCI 镜像 */
-    microsandboxImage: 'python:3.14-slim',
-    /** @type {string[]} 首次使用时在 microVM 内安装并缓存为快照的 Python 依赖 */
-    pythonDependencies: [],
-    /** @type {number} 首次构建 Python 依赖快照时 pip 安装超时（秒） */
-    dependencyInstallTimeoutSeconds: 900,
-    /** @type {number} Python 依赖快照构建沙盒最长存活时间（秒） */
-    dependencySnapshotTimeoutSeconds: 1200,
-    /** @type {number} Microsandbox microVM 内存（MiB） */
-    microsandboxMemoryMiB: 512,
-    /** @type {number} Microsandbox microVM vCPU 数 */
-    microsandboxCpus: 1,
-    /** @type {string} Playwright 官方浏览器 OCI 镜像（须与 playwright-core 版本一致） */
-    microsandboxBrowserImage: 'mcr.microsoft.com/playwright:v1.61.0-noble',
-    /** @type {number} 浏览器 microVM 内存（MiB） */
-    browserMemoryMiB: 1024,
-    /** @type {number} 浏览器 microVM vCPU 数 */
-    browserCpus: 2,
-    /** @type {number} 浏览器页面与动作超时（秒） */
-    browserTimeoutSeconds: 45,
-    /** @type {boolean} 是否忽略网页 HTTPS 证书错误 */
-    browserIgnoreHTTPSErrors: false,
-    /** @type {boolean} Microsandbox 是否允许受策略保护的公网访问；false 为完全断网 */
-    microsandboxNetwork: true,
+    /** @type {string} Quicksand 独立 Python 解释器（必须位于纯英文路径） */
+    quicksandPython: 'D:\\quicksand-runtime\\.venv\\Scripts\\python.exe',
+    /** @type {string} Quicksand Python 基础保存镜像名 */
+    quicksandImage: 'loli-python-media',
+    /** @type {Object<string,string>} 各语言使用的 Quicksand 保存镜像 */
+    quicksandImages: {
+      python: 'loli-python-media',
+      javascript: 'loli-code',
+      bash: 'loli-python-media'
+    },
+    /** @type {string} Quicksand 保存镜像工作目录（必须位于纯英文路径） */
+    quicksandWorkspace: 'D:\\quicksand-runtime\\workspace',
+    /** @type {number} Quicksand vCPU；Windows WHPX 下媒体镜像使用 1 核最稳定 */
+    quicksandCpus: 1,
+    /** @type {number} Quicksand microVM 内存（MiB） */
+    quicksandMemoryMiB: 512,
+    /** @type {number} outputs/ 单个产物允许回传的最大体积（MiB，最大 512） */
+    artifactMaxBytesMiB: 200,
+    /** @type {boolean} 启用宿主侧受控公网 GET/HEAD 网关 */
+    fetchEnable: false,
+    /** @type {string[]} 允许下载的域名；空数组表示任意公网域名 */
+    fetchAllowedDomains: [],
+    /** @type {boolean} 允许白名单域名使用本机代理的 198.18/15 Fake-IP */
+    fetchAllowProxyFakeIp: false,
+    /** @type {number} 单个公网下载最大体积（MiB，最大 20） */
+    fetchMaxBytesMiB: 20,
+    /** @type {number} 公网下载超时（秒） */
+    fetchTimeoutSeconds: 30,
+    /** @type {boolean} 允许 AI 在主人请求中申请 Quicksand FULL 原始网络 */
+    fullNetworkEnable: false,
+    /** @type {number} FULL 原始联网任务最长执行时间（秒） */
+    fullNetworkTimeoutSeconds: 60,
     /** @type {number} 单次执行超时（秒） */
     requestTimeoutSeconds: 120,
     /** @type {number} microVM 最长存活时间（秒） */

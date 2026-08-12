@@ -21,7 +21,7 @@ import {
   autoCollectMasterStickers,
   buildStickerDirectivePrompt,
   extractStickerDirective,
-  findSticker,
+  findStickerWithEmbedding,
   getInlineFacePayload,
   injectInlineStickerPayload,
   INLINE_STICKER_TOKEN,
@@ -136,7 +136,7 @@ function mergeStandaloneInlineStickerChunks (chunks) {
   return merged
 }
 
-function _checkManualAt (e) {
+export function _checkManualAt (e) {
   if (!Array.isArray(e.message)) return false
   const selfId = getSelfId(e)
   if (!selfId) return false
@@ -184,20 +184,63 @@ function _formatTriggerLog (trigger, uid, gid) {
   return `[loli] trigger type=${trigger.type} ${scope} user=${uid}${detail}`
 }
 
-function _getInteractionHint (trigger, inGroup) {
+export function _getInteractionHint (trigger, inGroup, atContext = null) {
   if (!inGroup) return '用户正在私聊你，这条消息是在直接对你说。'
+  const pointsToOthers = atContext?.atBot !== true && atContext?.others?.length > 0
   if (trigger.type === 'at') {
-    return trigger.source === 'alias'
-      ? '用户通过你的名字或别名叫了你，这条消息是在明确对你说。'
-      : '用户明确 @ 了你，这条消息是在直接对你说；请回应当前发送者。'
+    if (trigger.source === 'alias') {
+      return pointsToOthers
+        ? '用户提到了你的名字或别名，但 @ 的是别人，先判断是否在对你说话，再决定以什么身份接话。'
+        : '用户通过你的名字或别名叫了你，这条消息是在明确对你说。'
+    }
+    return '用户明确 @ 了你，这条消息是在直接对你说；请回应当前发送者。'
   }
   if (trigger.type === 'prefix') {
     return `用户使用唤醒前缀“${trigger.hitPrefix}”叫了你，这条消息是在对你说。`
   }
   if (trigger.type === 'keyword') {
+    if (pointsToOthers) {
+      return `用户提到了关键词“${trigger.hitKeyword}”，但 @ 的是别人，先判断是否在对你说话，再决定以什么身份接话。`
+    }
     return `用户使用唤醒词“${trigger.hitKeyword}”叫了你，这条消息是在对你说。`
   }
   return ''
+}
+
+export function _getAtDirectionHint (atContext) {
+  if (atContext?.atBot === true || !Array.isArray(atContext?.others) || atContext.others.length === 0) return ''
+  const targets = atContext.others.map(item => item.text).filter(Boolean).join('、')
+  return targets
+    ? `注意：这条消息里 @ 的是 ${targets}，不是你。先判断说话对象，不要当成在叫你。`
+    : ''
+}
+
+function _getCachedGroupMember (e, selfId) {
+  const maps = [e?.group?.gml, e?.bot?.gml, e?.group?.bot?.gml]
+  for (const map of maps) {
+    if (map instanceof Map) {
+      const member = map.get(Number(selfId)) || map.get(selfId)
+      if (member) return member
+    } else if (map && typeof map === 'object') {
+      const member = map[selfId]
+      if (member) return member
+    }
+  }
+  return null
+}
+
+export function _getBotIdentityPrompt (e, selfId = getSelfId(e)) {
+  const id = String(selfId || '')
+  if (!id) return ''
+  try {
+    const member = (e?.self && typeof e.self === 'object' ? e.self : null) || _getCachedGroupMember(e, id)
+    const rawName = member?.card || member?.card_name || member?.cardName || member?.nickname || member?.nick ||
+      e?.bot?.nickname || e?.group?.bot?.nickname || ''
+    const name = String(rawName || '').replace(/\s+/gu, ' ').trim().slice(0, 80)
+    return `[你的身份] 你的 QQ：${id}${name && name !== id ? `；本群昵称：${name}` : ''}`
+  } catch {
+    return `[你的身份] 你的 QQ：${id}`
+  }
 }
 
 /**
@@ -432,7 +475,6 @@ export class loli extends plugin {
 
     // 构建选项
     const sendOpts = JSON.parse(JSON.stringify(preset.sendMessageOption || {}))
-    if (cfg.temperature >= 0) sendOpts.temperature = cfg.temperature
     if (cfg.maxTokens > 0) sendOpts.maxTokens = cfg.maxTokens
     const historyMaxMessages = Number(getConfig().llm?.historyMaxMessages)
     if (historyMaxMessages > 0) sendOpts.historyLimit = historyMaxMessages
@@ -475,8 +517,15 @@ export class loli extends plugin {
     }
 
     const userText = stripIdentityPrompt(extractTextFromUserMessage(userMessage)) || e.msg || ''
-    const interactionHint = _getInteractionHint(trigger, inGroup)
+    const atContext = userMessage?.atContext || null
+    const interactionHint = _getInteractionHint(trigger, inGroup, atContext)
     if (interactionHint) userMessage = addInteractionHint(userMessage, interactionHint)
+    const atDirectionHint = inGroup ? _getAtDirectionHint(atContext) : ''
+    if (atDirectionHint) userMessage = addInteractionHint(userMessage, atDirectionHint)
+    if (userMessage?.atContext) {
+      const { atContext: _atContext, ...cleanUserMessage } = userMessage
+      userMessage = cleanUserMessage
+    }
 
     // 构建群友昵称映射
     const chatterNameMap = inGroup ? await buildChatterNameMap(e) : {}
@@ -532,6 +581,14 @@ export class loli extends plugin {
 
     // ── 低频段：身份与群学习设定（版本化，变动以小时/天计） ──
     if (inGroup) {
+      const botIdentityPrompt = _getBotIdentityPrompt(e, selfId)
+      if (botIdentityPrompt) systemSegments.push(botIdentityPrompt)
+
+      const groupTopicGuidance = getConfig()?.llm?.groupTopicGuidance
+      if (typeof groupTopicGuidance === 'string' && groupTopicGuidance.trim()) {
+        systemSegments.push(groupTopicGuidance.trim())
+      }
+
       const identityPrompt = buildIdentityAwarenessPrompt({
         baseDir: _resolveMemoryBaseDir(),
         groupId: gid,
@@ -546,14 +603,17 @@ export class loli extends plugin {
       const learnedGroupPrompt = buildGroupLearningPrompt({
         baseDir: _resolveMemoryBaseDir(),
         groupId: gid,
-        config: getConfig()
+        config: getConfig(),
+        preset
       })
       if (learnedGroupPrompt) systemSegments.push(learnedGroupPrompt)
 
-      const memberMemoryPrompt = buildGroupMemberMemoryPrompt({
+      const memberMemoryPrompt = await buildGroupMemberMemoryPrompt({
         baseDir: _resolveMemoryBaseDir(),
         groupId: gid,
         userId: uid,
+        queryText: userText,
+        logger,
         config: getConfig()
       })
       if (memberMemoryPrompt) systemSegments.push(memberMemoryPrompt)
@@ -624,10 +684,10 @@ export class loli extends plugin {
     let replySourceText = visibleResponseText
 
     if (stickerDirective.emotion && stickerConfig?.stickers?.enable !== false && stickerCooldownOpen) {
-      matchedSticker = findSticker({
+      matchedSticker = await findStickerWithEmbedding({
         emotion: stickerDirective.emotion,
-        context: visibleResponseText
-      })
+        context: [userText, visibleResponseText].filter(Boolean).join('\n')
+      }, stickerConfig, undefined, { logger })
       if (!matchedSticker) {
         logger?.debug?.(`[Sticker] 没有匹配标签“${stickerDirective.emotion}”的可用表情，跳过发送`)
       } else {

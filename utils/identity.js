@@ -1,4 +1,4 @@
-import { getEventGroup, isGroupEvent } from './bot.js'
+import { getEventGroup, getSelfId, isGroupEvent, normalizeSegment } from './bot.js'
 
 const seenMasterIds = new Set()
 const eventIdentityCache = new WeakMap()
@@ -15,6 +15,26 @@ function normalizeId (value) {
 function normalizeText (...values) {
   const value = firstValue(...values)
   return value === undefined ? '' : String(value)
+}
+
+/** 从 ICQQ / OneBot 消息段中提取第一个被 @ 的 QQ，找不到时兼容框架事件快捷字段。 */
+export function resolveMentionedUserId (event) {
+  const selfId = getSelfId(event)
+  for (const raw of Array.isArray(event?.message) ? event.message : []) {
+    const segment = normalizeSegment(raw)
+    if (segment.type !== 'at') continue
+    const id = normalizeId(firstValue(
+      segment.qq,
+      segment.user_id,
+      segment.userId,
+      segment.target,
+      segment.target_id,
+      segment.id
+    )).trim()
+    if (id && id !== selfId && id !== 'all' && id !== 'everyone' && /^\d+$/.test(id)) return id
+  }
+  const fallback = normalizeId(firstValue(event?.at, event?.at_user_id, event?.atUserId)).trim()
+  return fallback !== selfId && /^\d+$/.test(fallback) ? fallback : ''
 }
 
 function masterConfig (config = {}) {

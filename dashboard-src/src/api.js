@@ -35,7 +35,7 @@ export async function request(path, options = {}) {
         const pre = message.match(/<pre>([\s\S]*?)<\/pre>/i);
         message = (pre ? pre[1] : message.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
       }
-      throw new Error(message || `HTTP ${res.status}`);
+      throw Object.assign(new Error(message || `HTTP ${res.status}`), { status: res.status });
     }
     
     if (res.status === 204) return withMeta ? { data: null, headers: res.headers } : null;

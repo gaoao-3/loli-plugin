@@ -1,9 +1,39 @@
 import fs from 'fs'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import { isDeepStrictEqual } from 'node:util'
 
 function isConfigObject (value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function jsonEqual (left, right) {
+  return isDeepStrictEqual(left, right)
+}
+
+/**
+ * Three-way merge used when a long-lived runtime wants to save after the file
+ * changed underneath it. Values changed only on disk are retained; values
+ * changed only by the caller are applied. Arrays are intentionally atomic.
+ */
+export function mergeConcurrentConfig (base, local, disk) {
+  if (jsonEqual(local, base)) return structuredClone(disk)
+  if (jsonEqual(disk, base) || jsonEqual(local, disk)) return structuredClone(local)
+
+  const allObjects = [base, local, disk].every(isConfigObject)
+  if (!allObjects) return structuredClone(local)
+
+  const out = {}
+  const keys = new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(disk)])
+  for (const key of keys) {
+    const hasLocal = Object.prototype.hasOwnProperty.call(local, key)
+    const hasDisk = Object.prototype.hasOwnProperty.call(disk, key)
+    const localValue = hasLocal ? local[key] : undefined
+    const diskValue = hasDisk ? disk[key] : undefined
+    const merged = mergeConcurrentConfig(base[key], localValue, diskValue)
+    if (merged !== undefined) out[key] = merged
+  }
+  return out
 }
 
 function syncDirectory (dir) {
@@ -53,8 +83,14 @@ export function saveConfigFile (file, value, { backup = true } = {}) {
   const serialized = JSON.stringify(value, null, 2)
   if (serialized === undefined) throw new TypeError('config is not serializable')
 
-  if (backup && fs.existsSync(file)) {
-    const current = fs.readFileSync(file, 'utf8')
+  let current = null
+  if (fs.existsSync(file)) {
+    current = fs.readFileSync(file, 'utf8')
+    // 最后一层幂等保护：相同内容既不替换主文件，也不滚动备份。
+    if (current === serialized) return serialized
+  }
+
+  if (backup && current !== null) {
     try {
       const parsed = JSON.parse(current)
       if (isConfigObject(parsed)) atomicWriteTextFile(`${file}.bak`, current)

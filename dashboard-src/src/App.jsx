@@ -12,6 +12,8 @@ import Config from './pages/Config.jsx'
 import Logs from './pages/Logs.jsx'
 
 import SidebarFooter from './SidebarFooter.jsx'
+import Preloader from './components/Preloader.jsx'
+import { burstSparkles } from './fx.js'
 
 const PAGES = [
   { id: 'overview', title: '// 总览 WORKSPACE', short: '总览', tone: '#8ec5ff' },
@@ -37,6 +39,12 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [toasts, setToasts] = useState([])
+
+  // 预加载页：首屏数据就绪（或进入登录门）后淡出
+  const [booted, setBooted] = useState(false)
+  const [bootFading, setBootFading] = useState(false)
+  const [preloaderGone, setPreloaderGone] = useState(false)
+  const bootStartRef = useRef(Date.now())
 
   // Page data
   const [system, setSystem] = useState(null)
@@ -106,7 +114,7 @@ export default function App() {
     const arrayFields = [
       ['loli', 'triggerPrefix'], ['loli', 'triggerKeywords'], ['loli', 'groups'],
       ['loli', 'blackGroups'], ['loli', 'blackUsers'], ['memory', 'group', 'enabledGroups'],
-      ['sandbox', 'pythonDependencies'], ['dokobot', 'allowedDomains'],
+      ['dokobot', 'allowedDomains'], ['sandbox', 'fetchAllowedDomains'],
       ['skills', 'directories'], ['skills', 'disabled']
     ]
     arrayFields.forEach(keys => {
@@ -118,7 +126,17 @@ export default function App() {
       const lastKey = keys[keys.length - 1]
       if (target && Array.isArray(target[lastKey])) target[lastKey] = target[lastKey].join('\n')
     })
-    if (local.mcp && Array.isArray(local.mcp.servers)) local.mcp.servers = JSON.stringify(local.mcp.servers, null, 2)
+    // MCP 服务器保持结构化数组，补充编辑态文本字段（args/headers 按行编辑）
+    // _key 为前端渲染/折叠状态的稳定标识，保存时剔除
+    if (local.mcp) {
+      const servers = Array.isArray(local.mcp.servers) ? local.mcp.servers : []
+      local.mcp.servers = servers.map((server, index) => ({
+        ...server,
+        _key: `mcp_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        argsText: Array.isArray(server.args) ? server.args.join('\n') : '',
+        headersText: Object.entries(server.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')
+      }))
+    }
     if (!local.loli.masterIdentity) {
       local.loli.masterIdentity = { enable: true, autoDetect: true, appellation: '', users: [], userIds: [] }
     }
@@ -214,23 +232,39 @@ export default function App() {
       if (typeof text === 'string') return text.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
       return Array.isArray(text) ? text : []
     }
+    // 每行 KEY=VALUE（或 KEY: VALUE）→ 对象，用于 MCP 请求头
+    const parseKeyValueLines = (text) => Object.fromEntries(
+      String(text || '').split('\n').map(line => line.trim()).filter(Boolean)
+        .map(line => {
+          const eq = line.indexOf('=')
+          const sep = eq >= 0 ? eq : line.indexOf(':')
+          if (sep <= 0) return null
+          return [line.slice(0, sep).trim(), line.slice(sep + 1).trim()]
+        })
+        .filter(Boolean)
+    )
     payload.loli.triggerPrefix = toArray(localConfig.loli.triggerPrefix)
     payload.loli.triggerKeywords = toArray(localConfig.loli.triggerKeywords)
     payload.loli.groups = toArray(localConfig.loli.groups)
     payload.loli.blackGroups = toArray(localConfig.loli.blackGroups)
     payload.loli.blackUsers = toArray(localConfig.loli.blackUsers)
     payload.memory.group.enabledGroups = toArray(localConfig.memory.group.enabledGroups)
-    payload.sandbox.pythonDependencies = typeof localConfig.sandbox.pythonDependencies === 'string'
-      ? localConfig.sandbox.pythonDependencies.split(/\n/).map(s => s.trim()).filter(Boolean)
-      : (Array.isArray(localConfig.sandbox.pythonDependencies) ? localConfig.sandbox.pythonDependencies : [])
     payload.dokobot.allowedDomains = toArray(localConfig.dokobot.allowedDomains)
     payload.skills.directories = toArray(localConfig.skills.directories)
     payload.skills.disabled = toArray(localConfig.skills.disabled)
-    if (typeof localConfig.mcp.servers === 'string') {
-      const servers = JSON.parse(localConfig.mcp.servers || '[]')
-      if (!Array.isArray(servers)) throw new Error('MCP Servers JSON 必须是数组')
-      payload.mcp.servers = servers
-    }
+    // MCP 服务器：结构化编辑 → 提交前还原 args/headers，剔除编辑态字段
+    payload.mcp.servers = (Array.isArray(localConfig.mcp.servers) ? localConfig.mcp.servers : []).map((server, index) => {
+      const { _key, argsText, headersText, ...rest } = server
+      return {
+        ...rest,
+        id: String(server.id || '').trim() || `server_${index + 1}`,
+        transport: server.transport === 'stdio' ? 'stdio' : 'streamable-http',
+        url: String(server.url || '').trim(),
+        command: String(server.command || '').trim(),
+        args: String(argsText || '').split('\n').map(s => s.trim()).filter(Boolean),
+        headers: parseKeyValueLines(headersText)
+      }
+    })
 
     const N = Number
     payload.loli.promptProbability = N(localConfig.loli.promptProbability)
@@ -246,7 +280,7 @@ export default function App() {
     payload.loli.segmentedReply.maxSegments = N(localConfig.loli.segmentedReply.maxSegments)
     payload.loli.segmentedReply.delayMin = N(localConfig.loli.segmentedReply.delayMin)
     payload.loli.segmentedReply.delayMax = N(localConfig.loli.segmentedReply.delayMax)
-    payload.loli.temperature = N(localConfig.loli.temperature)
+    delete payload.loli.temperature
     payload.loli.maxTokens = N(localConfig.loli.maxTokens)
     payload.loli.imageCompress.maxLongEdge = N(localConfig.loli.imageCompress.maxLongEdge) || 1536
     payload.loli.imageCompress.quality = N(localConfig.loli.imageCompress.quality) || 85
@@ -254,6 +288,16 @@ export default function App() {
     payload.loli.historyImages.maxImages = N(localConfig.loli.historyImages.maxImages) || 5
     payload.loli.historyImages.maxAgeSeconds = N(localConfig.loli.historyImages.maxAgeSeconds) || 300
     payload.loli.historyImages.contextLength = N(localConfig.loli.historyImages.contextLength) || 30
+    payload.sandbox.requestTimeoutSeconds = N(localConfig.sandbox.requestTimeoutSeconds) || 120
+    payload.sandbox.sandboxTimeoutSeconds = N(localConfig.sandbox.sandboxTimeoutSeconds) || 300
+    payload.sandbox.quicksandMemoryMiB = N(localConfig.sandbox.quicksandMemoryMiB) || 512
+    payload.sandbox.quicksandCpus = 1
+    payload.sandbox.fetchAllowedDomains = typeof localConfig.sandbox.fetchAllowedDomains === 'string'
+      ? localConfig.sandbox.fetchAllowedDomains.split(/\n/).map(s => s.trim()).filter(Boolean)
+      : (Array.isArray(localConfig.sandbox.fetchAllowedDomains) ? localConfig.sandbox.fetchAllowedDomains : [])
+    payload.sandbox.fetchMaxBytesMiB = Math.max(1, Math.min(20, N(localConfig.sandbox.fetchMaxBytesMiB) || 20))
+    payload.sandbox.fetchTimeoutSeconds = Math.max(5, Math.min(120, N(localConfig.sandbox.fetchTimeoutSeconds) || 30))
+    payload.sandbox.fullNetworkTimeoutSeconds = Math.max(5, Math.min(120, N(localConfig.sandbox.fullNetworkTimeoutSeconds) || 60))
     if (payload.llm?.groupTimeline) {
       payload.llm.groupTimeline.maxChars = Math.max(500, Math.min(12000, N(localConfig.llm.groupTimeline.maxChars) || 3000))
     }
@@ -288,7 +332,16 @@ export default function App() {
     payload.mcp.callTimeoutMs = Math.max(1000, Math.min(300000, N(localConfig.mcp.callTimeoutMs) || 60000))
 
     const revision = configRevisionRef.current
-    await api.put('/config', payload, revision ? { 'If-Match': revision } : {})
+    try {
+      await api.put('/config', payload, revision ? { 'If-Match': revision } : {})
+    } catch (err) {
+      // 后台自动保存（主人身份捕获/表情收录/学习调度）会顶掉修订号导致 409：
+      // 面板提交的是全量配置，对齐最新修订号重试一次，避免用户配置静默丢失。
+      if (err?.status !== 409) throw err
+      const fresh = await api.getWithMeta('/config')
+      configRevisionRef.current = fresh.headers.get('etag')
+      await api.put('/config', payload, configRevisionRef.current ? { 'If-Match': configRevisionRef.current } : {})
+    }
     const nextToken = String(payload.dashboard?.authToken || '').trim()
     if (nextToken) localStorage.setItem('loli-dashboard-token', nextToken)
     else localStorage.removeItem('loli-dashboard-token')
@@ -318,8 +371,36 @@ export default function App() {
   }, [fetchHealth, showToast])
 
   useEffect(() => {
-    if (authorized) loadTabData(activeTab)
+    if (authorized) {
+      Promise.resolve(loadTabData(activeTab))
+        .catch(() => {})
+        .finally(() => setBooted(true))
+    }
   }, [activeTab, authorized]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 预加载页：就绪后播放淡出再卸载；至少展示 900ms；8s 兜底避免后台异常时卡死
+  const bootReady = booted || (authRequired && !authorized)
+  useEffect(() => {
+    const failsafe = setTimeout(() => setBooted(true), 8000)
+    return () => clearTimeout(failsafe)
+  }, [])
+  useEffect(() => {
+    if (!bootReady) return undefined
+    const wait = Math.max(0, 900 - (Date.now() - bootStartRef.current))
+    const t1 = setTimeout(() => setBootFading(true), wait)
+    const t2 = setTimeout(() => setPreloaderGone(true), wait + 500)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [bootReady])
+
+  // 全局：主按钮点击时星光迸发
+  useEffect(() => {
+    const onClick = (e) => {
+      const btn = e.target.closest?.('.btn-primary')
+      if (btn && !btn.disabled) burstSparkles(e)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
 
   // 主动切换页签：同步写入 hash（hashchange 不会再回写）
   const changeTab = (tab) => {
@@ -364,6 +445,7 @@ export default function App() {
   return (
     <div className="app">
       <Petals />
+      {!preloaderGone && <Preloader fading={bootFading} />}
 
       {/* Sidebar */}
       <aside className={`sidebar${isSidebarCollapsed ? ' collapsed' : ''}`}>
@@ -406,7 +488,7 @@ export default function App() {
       <div className="main">
         <header className="header">
           <div className="header-left">
-            <h1 className="page-title" key={activeTab}>{PAGE_TITLES[activeTab]}</h1>
+            <h1 className="page-title" key={activeTab} style={{ '--tone': PAGE_TONES[activeTab] }}>{PAGE_TITLES[activeTab]}</h1>
           </div>
           <div className="header-right">
             <div className={`global-spinner${loading ? '' : ' hidden'}`}></div>
@@ -415,7 +497,7 @@ export default function App() {
 
         <div className="content-scroller">
           {PAGE_ORDER.map(page => (
-            <div key={page} className={`page-pane${activeTab === page ? ' active' : ''}`}>
+            <div key={page} className={`page-pane${activeTab === page ? ' active' : ''}`} style={{ '--tone': PAGE_TONES[page] }}>
               {activeTab === page && pages[page]}
             </div>
           ))}

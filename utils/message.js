@@ -27,13 +27,38 @@ export function extractTextFromUserMessage (userMessage) {
   return ''
 }
 
-/** 给当前轮添加交互提示，让模型明确知道用户是在叫机器人。 */
+/** 给当前轮添加交互提示，说明触发方式或消息指向。 */
 export function addInteractionHint (userMessage, hint) {
   const text = String(hint || '').trim()
   if (!text) return userMessage
   const content = Array.isArray(userMessage?.content) ? [...userMessage.content] : []
   content.unshift({ type: 'text', text: `[当前交互] ${text}` })
   return { ...userMessage, content }
+}
+
+function collectAtContext (e) {
+  const selfId = getSelfId(e)
+  let atBot = false
+  const others = []
+  const seen = new Set()
+
+  for (const rawSegment of e?.message || []) {
+    const segment = normalizeSegment(rawSegment)
+    if (segment.type !== 'at') continue
+    const qq = String(segment.qq || segment.user_id || segment.id || '')
+    if (!qq || ['all', 'everyone'].includes(qq.toLowerCase())) continue
+    if (selfId && qq === selfId) {
+      atBot = true
+      continue
+    }
+    if (seen.has(qq)) continue
+    seen.add(qq)
+    const rawName = String(segment.text || segment.name || '').replace(/^@/u, '').trim()
+    const name = rawName && rawName !== qq ? rawName : '某人'
+    others.push({ name, qq, text: `@${name}(QQ:${qq})` })
+  }
+
+  return atBot || others.length > 0 ? { atBot, others } : null
 }
 
 /**
@@ -300,6 +325,7 @@ export async function intoUserMessage (e, options = {}) {
   } = options
   const contents = []
   let text = ''
+  const atContext = collectAtContext(e)
 
   // 处理引用回复
   const { text: replyText, imageContents: replyImages } = await _extractReplyContext(e, {
@@ -320,12 +346,11 @@ export async function intoUserMessage (e, options = {}) {
       switch (val.type) {
         case 'at': {
           if (handleAtMsg) {
-            const qq = val.qq || val.user_id
-            const atCard = val.text || val.name
+            const qq = String(val.qq || val.user_id || val.id || '')
             if ((toggleMode === 'at' || excludeAtBot) && String(qq) === getSelfId(e)) {
               break
             }
-            text += ` @${atCard || qq}(QQ:${qq || '未知'}) `
+            text += ` ${formatOneBotSegmentText(val)} `
           }
           break
         }
@@ -387,7 +412,8 @@ export async function intoUserMessage (e, options = {}) {
   })
   return {
     role: 'user',
-    content: contents
+    content: contents,
+    ...(atContext ? { atContext } : {})
   }
 }
 

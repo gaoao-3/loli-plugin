@@ -26,7 +26,8 @@ function appendPath (url, suffix) {
 }
 
 export function buildModelListRequest ({ adapterType, baseUrl, apiKey } = {}) {
-  const actualAdapter = adapterType || 'openai'
+  // Google AI Studio 与 Gemini 协议一致，仅渠道类型不同
+  const actualAdapter = adapterType === 'aistudio' ? 'gemini' : (adapterType || 'openai')
   const headers = { Accept: 'application/json' }
   let url
 

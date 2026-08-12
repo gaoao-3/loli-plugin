@@ -51,6 +51,12 @@ export function createServer (ctx) {
       if (mimeTypes[ext]) {
         res.setHeader('Content-Type', `${mimeTypes[ext]}; charset=utf-8`)
       }
+      if (ext === '.html') {
+        res.setHeader('Cache-Control', 'no-store')
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        // Vite 资源名带内容哈希，可长期缓存；入口 HTML 永不缓存并负责指向新哈希。
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      }
     }
   }
   app.use('/dashboard', express.static(path.join(CORE_ROOT, 'dashboard'), staticOpts))
@@ -65,6 +71,7 @@ export function createServer (ctx) {
 
   // 面板路由兜底（SPA）
   app.get('/dashboard/*', (req, res) => {
+    res.set('Cache-Control', 'no-store')
     res.type('html').sendFile(path.join(CORE_ROOT, 'dashboard', 'index.html'))
   })
 

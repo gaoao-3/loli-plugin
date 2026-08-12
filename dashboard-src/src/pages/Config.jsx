@@ -90,7 +90,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
   return (
     <div className="pane-content select-text">
       <div className="flex-row justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-strong">// 系统参数配置</h2>
+        <h2 className="page-hero-title">系统参数配置</h2>
         <button className="btn btn-primary" onClick={saveConfig}>
           <Icon name="save" size={12} />保存全局配置
         </button>
@@ -177,7 +177,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                       <label className="text-xs text-muted">默认绑定预设 ID</label>
                       <input {...bind('loli.defaultPreset')} type="text" className="form-input" />
                     </div>
-                    <div className="flex-column gap-3 border border-default rounded-lg p-3">
+                    <div className="flex-column gap-3 border border-default rounded-lg p-3 sub-card">
                       <div className="toggle-switch-row">
                         <div>
                           <span className="text-xs font-medium text-soft">主人识别与特别称呼</span>
@@ -200,7 +200,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                     <div className="flex-column gap-1">
                       <div className="flex-row justify-between text-xs">
                         <span className="text-muted">主动回复概率</span>
-                        <span className="font-bold text-accent bg-accent-soft px-1.5 py-0.2 rounded font-mono">{Number(loli.promptProbability || 0).toFixed(2)}</span>
+                        <span className="param-chip">{Number(loli.promptProbability || 0).toFixed(2)}</span>
                       </div>
                       <input {...bind('loli.promptProbability')} type="range" min="0.0" max="1.0" step="0.01" className="ai-range-slider mt-2" />
                     </div>
@@ -297,19 +297,12 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
           <div className="config-sheet">
             <div className="flex-column gap-4">
               <div className="card">
-                <span className="card-section-title mb-3 block">// 全局模型参数覆盖 (设置为 -1 或 0 代表关闭)</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="flex-column gap-1.5">
-                    <div className="flex-row justify-between text-xs">
-                      <span className="text-muted">Temperature (温度覆盖, -1.0 代表不覆盖)</span>
-                      <span className="font-bold text-accent bg-accent-soft px-1.5 py-0.2 rounded font-mono">{loli.temperature === -1 ? '默认 (-1)' : Number(loli.temperature).toFixed(1)}</span>
-                    </div>
-                    <input {...bind('loli.temperature')} type="range" min="-1.0" max="2.0" step="0.1" className="ai-range-slider mt-2" />
-                  </div>
+                <span className="card-section-title mb-3 block">// 全局模型参数覆盖 (设置为 0 代表关闭)</span>
+                <div className="grid grid-cols-1 gap-6">
                   <div className="flex-column gap-1.5">
                     <div className="flex-row justify-between text-xs">
                       <span className="text-muted">Max Tokens (长度覆盖, 0 代表不覆盖)</span>
-                      <span className="font-bold text-accent bg-accent-soft px-1.5 py-0.2 rounded font-mono">{loli.maxTokens === 0 ? '默认 (0)' : loli.maxTokens}</span>
+                      <span className="param-chip">{loli.maxTokens === 0 ? '默认 (0)' : loli.maxTokens}</span>
                     </div>
                     <input {...bind('loli.maxTokens')} type="range" min="0" max="8192" step="256" className="ai-range-slider mt-2" />
                   </div>
@@ -319,7 +312,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// Dokobot 本地搜索与登录态网页读取</span>
+                    <span className="card-section-title">// Dokobot 本地搜索与登录态网页读取</span>
                     <p className="text-[10px] text-faint mt-1">复用本机浏览器 Bridge，为 dokobot_search / dokobot_read 读取动态页面；失败可自动回退现有搜索和抓取链路。</p>
                   </div>
                   <Switch {...bindSwitch('dokobot.enable')} />
@@ -394,7 +387,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
 
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
-                  <span className="text-xs font-bold text-muted">// 多媒体图片自动压缩优化</span>
+                  <span className="card-section-title">// 多媒体图片自动压缩优化</span>
                   <Switch {...bindSwitch('loli.imageCompress.enable')} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -415,7 +408,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
 
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
-                  <span className="text-xs font-bold text-muted">// 多模态历史图片深度</span>
+                  <span className="card-section-title">// 多模态历史图片深度</span>
                   <Switch {...bindSwitch('loli.historyImages.enable')} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -444,7 +437,40 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// AI 自主用户印象</span>
+                    <span className="card-section-title">// Gemini Embedding 语义召回</span>
+                    <p className="text-[10px] text-faint mt-1">复用指定 Gemini 渠道的 API Key，为群友长期事实生成向量，并按当前问题只侧载最相关的记忆。</p>
+                  </div>
+                  <Switch checked={localConfig.memory.embedding?.enable === true} onChange={(v) => setPath('memory.embedding.enable', v)} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="flex-column gap-1.5">
+                    <label className="text-xs text-muted">Embedding 渠道 ID</label>
+                    <ChannelInput channels={channels} {...bind('memory.embedding.channelId')} placeholder="gemini" />
+                  </div>
+                  <div className="flex-column gap-1.5">
+                    <label className="text-xs text-muted">Embedding 模型</label>
+                    <input {...bind('memory.embedding.model')} type="text" placeholder="gemini-embedding-2" className="form-input" />
+                  </div>
+                  <div className="flex-column gap-1.5">
+                    <label className="text-xs text-muted">向量维度</label>
+                    <input {...bind('memory.embedding.dimensions')} type="number" min="128" max="3072" step="1" className="form-input" />
+                  </div>
+                  <div className="flex-column gap-1.5">
+                    <label className="text-xs text-muted">每轮最多召回条数</label>
+                    <input {...bind('memory.embedding.topK')} type="number" min="1" max="30" step="1" className="form-input" />
+                  </div>
+                  <div className="flex-column gap-1.5">
+                    <label className="text-xs text-muted">最低相似度</label>
+                    <input {...bind('memory.embedding.minSimilarity')} type="number" min="-1" max="1" step="0.01" className="form-input" />
+                  </div>
+                </div>
+                <p className="text-[10px] text-faint mt-3">向量只保存在本地 SQLite；关闭后会回退到原有置信度顺序，不影响记忆学习。</p>
+              </div>
+
+              <div className="card">
+                <div className="flex-row justify-between items-center border-b pb-2 mb-3">
+                  <div>
+                    <span className="card-section-title">// AI 自主用户印象</span>
                     <p className="text-[10px] text-faint mt-1">按 QQ 直接审查原始群消息，自主合并、修正和删除互动偏好与长期事实；不生成摘要或画像。</p>
                   </div>
                   <Switch checked={localConfig.memory.memberLearning?.enable !== false} onChange={(v) => setPath('memory.memberLearning.enable', v)} />
@@ -492,7 +518,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// AI 自主群风格</span>
+                    <span className="card-section-title">// AI 自主群风格</span>
                     <p className="text-[10px] text-faint mt-1">AI 根据跨成员证据维护完整的紧凑群风格快照，可主动合并、改写和删除旧条目；不再生成重复的群级主观记忆。</p>
                   </div>
                   <Switch checked={localConfig.memory.groupLearning?.enable !== false} onChange={(v) => setPath('memory.groupLearning.enable', v)} />
@@ -541,7 +567,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// 会话历史压缩（滚动摘要）</span>
+                    <span className="card-section-title">// 会话历史压缩（滚动摘要）</span>
                     <p className="text-[10px] text-faint mt-1">会话超过阈值后，最老的消息由记忆模型合并成摘要，控制多轮对话的 token 开销。</p>
                   </div>
                   <Switch checked={localConfig.llm?.historyCompress?.enable !== false} onChange={(v) => setPath('llm.historyCompress.enable', v)} />
@@ -589,7 +615,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// 群聊历史定位信息</span>
+                    <span className="card-section-title">// 群聊历史定位信息</span>
                     <p className="text-[10px] text-faint mt-1">消息正文、QQ、消息 ID、媒体与引用已合并为一份；历史条数继续使用“会话与冷却”中的群聊上下文数量。</p>
                   </div>
                   <Switch checked={localConfig.llm?.groupTimeline?.enable !== false} onChange={(v) => setPath('llm.groupTimeline.enable', v)} />
@@ -623,7 +649,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// QQ 表情库与 AI 自主表情</span>
+                    <span className="card-section-title">// QQ 表情库与 AI 自主表情</span>
                     <p className="text-[10px] text-faint mt-1">主人发送的表情可自动进入 SQLite 表情库，AI 在正文结束后按情绪标签自然跟发表情。</p>
                   </div>
                   <Switch checked={localConfig.stickers?.enable !== false} onChange={(v) => setPath('stickers.enable', v)} />
@@ -642,6 +668,35 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                   </div>
                   <Switch checked={localConfig.stickers?.autoClassify !== false} onChange={(v) => setPath('stickers.autoClassify', v)} />
                 </div>
+                <div className="toggle-switch-row mt-3">
+                  <div>
+                    <span className="text-xs font-medium text-soft">Gemini Embedding 模糊推荐</span>
+                    <p className="text-[10px] text-faint mt-1">使用用户原话和回复语境，在同一安全意图候选中进行类似 QQ 的模糊选图。</p>
+                  </div>
+                  <Switch checked={localConfig.stickers?.embedding?.enable === true} onChange={(v) => setPath('stickers.embedding.enable', v)} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                  <div className="flex-column gap-1">
+                    <label className="text-xs text-muted">Embedding 渠道 ID</label>
+                    <ChannelInput channels={channels} {...bind('stickers.embedding.channelId')} placeholder="gemini" />
+                  </div>
+                  <div className="flex-column gap-1">
+                    <label className="text-xs text-muted">Embedding 模型</label>
+                    <input {...bind('stickers.embedding.model')} type="text" className="form-input" placeholder="gemini-embedding-2" />
+                  </div>
+                  <div className="flex-column gap-1">
+                    <label className="text-xs text-muted">向量维度</label>
+                    <input {...bind('stickers.embedding.dimensions')} type="number" min="128" max="3072" className="form-input" />
+                  </div>
+                  <div className="flex-column gap-1">
+                    <label className="text-xs text-muted">语义权重</label>
+                    <input {...bind('stickers.embedding.weight')} type="number" min="0" max="200" className="form-input" />
+                  </div>
+                  <div className="flex-column gap-1">
+                    <label className="text-xs text-muted">最低相似度</label>
+                    <input {...bind('stickers.embedding.minSimilarity')} type="number" min="-1" max="1" step="0.01" className="form-input" />
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                   <div className="flex-column gap-1">
                     <label className="text-xs text-muted">跟发表情概率 (1-100)</label>
@@ -657,14 +712,14 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// QQ 消息回应与戳一戳</span>
+                    <span className="card-section-title">// QQ 消息回应与戳一戳</span>
                     <p className="text-[10px] text-faint mt-1">轻互动能力：AI 概率性给消息贴表情回应；被戳时按概率回戳，不会主动戳陌生人。</p>
                   </div>
                   <Switch checked={localConfig.interactions?.enable !== false} onChange={(v) => setPath('interactions.enable', v)} />
                 </div>
 
                 <div className="flex-column gap-4">
-                  <div className="flex-column gap-3 border border-default rounded-lg p-3">
+                  <div className="flex-column gap-3 border border-default rounded-lg p-3 sub-card">
                     <div className="toggle-switch-row">
                       <div>
                         <span className="text-xs font-medium text-soft">消息表情回应 (Reaction)</span>
@@ -675,7 +730,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                     <div className="flex-column gap-1">
                       <div className="flex-row justify-between text-xs">
                         <span className="text-muted">表情回应概率</span>
-                        <span className="font-bold text-accent bg-accent-soft px-1.5 py-0.2 rounded font-mono">{Number(localConfig.interactions?.reaction?.probability || 0).toFixed(2)}</span>
+                        <span className="param-chip">{Number(localConfig.interactions?.reaction?.probability || 0).toFixed(2)}</span>
                       </div>
                       <input {...bind('interactions.reaction.probability')} type="range" min="0.0" max="1.0" step="0.01" className="ai-range-slider mt-2" />
                     </div>
@@ -685,7 +740,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                     </div>
                   </div>
 
-                  <div className="flex-column gap-3 border border-default rounded-lg p-3">
+                  <div className="flex-column gap-3 border border-default rounded-lg p-3 sub-card">
                     <div className="toggle-switch-row">
                       <div>
                         <span className="text-xs font-medium text-soft">戳一戳回戳 (Poke)</span>
@@ -696,7 +751,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                     <div className="flex-column gap-1">
                       <div className="flex-row justify-between text-xs">
                         <span className="text-muted">回戳概率</span>
-                        <span className="font-bold text-accent bg-accent-soft px-1.5 py-0.2 rounded font-mono">{Number(localConfig.interactions?.poke?.returnProbability || 0).toFixed(2)}</span>
+                        <span className="param-chip">{Number(localConfig.interactions?.poke?.returnProbability || 0).toFixed(2)}</span>
                       </div>
                       <input {...bind('interactions.poke.returnProbability')} type="range" min="0.0" max="1.0" step="0.01" className="ai-range-slider mt-2" />
                     </div>
@@ -717,8 +772,8 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
                   <div>
-                    <span className="text-xs font-bold text-muted">// 代码与浏览器沙盒 (Microsandbox)</span>
-                    <p className="text-[10px] text-faint mt-1">使用本机 microVM 隔离执行，无需 Docker；支持代码、无头 Chromium、QQ 媒体输入与 outputs/ 产物回发。</p>
+                    <span className="card-section-title">// 代码沙盒 (Microsoft Quicksand)</span>
+                    <p className="text-[10px] text-faint mt-1">使用一次性、完全断网的本机 microVM 隔离执行，无需 Docker；网页读取请使用 Dokobot。</p>
                   </div>
                   <Switch {...bindSwitch('sandbox.enable')} />
                 </div>
@@ -736,15 +791,17 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                       <span className="text-xs font-medium text-soft">发送工具执行记录</span>
                       <Switch checked={localConfig.sandbox?.executionReport !== false} onChange={(v) => setPath('sandbox.executionReport', v)} />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="toggle-switch-row">
-                      <span className="text-xs font-medium text-soft">启用无头浏览器 (browser_use)</span>
-                      <Switch checked={localConfig.sandbox?.browserEnable !== false} onChange={(v) => setPath('sandbox.browserEnable', v)} />
+                      <span className="text-xs font-medium text-soft">受控公网下载（强制仅主人）</span>
+                      <Switch checked={localConfig.sandbox?.fetchEnable === true} onChange={(v) => setPath('sandbox.fetchEnable', v)} />
                     </div>
                     <div className="toggle-switch-row">
-                      <span className="text-xs font-medium text-soft">浏览器忽略 HTTPS 证书错误</span>
-                      <Switch checked={localConfig.sandbox?.browserIgnoreHTTPSErrors === true} onChange={(v) => setPath('sandbox.browserIgnoreHTTPSErrors', v)} />
+                      <span className="text-xs font-medium text-soft">白名单兼容代理 Fake-IP</span>
+                      <Switch checked={localConfig.sandbox?.fetchAllowProxyFakeIp === true} onChange={(v) => setPath('sandbox.fetchAllowProxyFakeIp', v)} />
+                    </div>
+                    <div className="toggle-switch-row">
+                      <span className="text-xs font-medium text-danger">允许 AI 申请 FULL 原始网络</span>
+                      <Switch checked={localConfig.sandbox?.fullNetworkEnable === true} onChange={(v) => setPath('sandbox.fullNetworkEnable', v)} />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -753,9 +810,6 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                       <select {...bind('sandbox.defaultLanguage')} className="form-select">
                         <option value="python">python</option>
                         <option value="javascript">javascript</option>
-                        <option value="typescript">typescript</option>
-                        <option value="java">java</option>
-                        <option value="go">go</option>
                         <option value="bash">bash</option>
                       </select>
                     </div>
@@ -768,49 +822,53 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
                       <input {...bind('sandbox.sandboxTimeoutSeconds')} type="number" className="form-input" />
                     </div>
                     <div className="flex-column gap-1.5 md:col-span-2">
-                      <label className="text-xs text-muted">Python OCI 镜像</label>
-                      <input {...bind('sandbox.microsandboxImage')} type="text" className="form-input" placeholder="python:3.14-slim" />
+                      <label className="text-xs text-muted">Quicksand Python 路径</label>
+                      <input {...bind('sandbox.quicksandPython')} type="text" className="form-input font-mono" placeholder={'D:\\quicksand-runtime\\.venv\\Scripts\\python.exe'} />
+                    </div>
+                    <div className="flex-column gap-1.5">
+                      <label className="text-xs text-muted">Python/Bash 保存镜像</label>
+                      <input {...bind('sandbox.quicksandImage')} type="text" className="form-input font-mono" placeholder="loli-python-media" />
+                    </div>
+                    <div className="flex-column gap-1.5">
+                      <label className="text-xs text-muted">JavaScript 保存镜像</label>
+                      <input {...bind('sandbox.quicksandImages.javascript')} type="text" className="form-input font-mono" placeholder="loli-code" />
                     </div>
                     <div className="flex-column gap-1.5 md:col-span-3">
-                      <label className="text-xs text-muted">Python 预装依赖（每行一个，无需 Docker）</label>
-                      <textarea {...bind('sandbox.pythonDependencies')} rows="5" className="form-textarea font-mono" placeholder={'pillow\nnumpy\npandas\nopenpyxl'} />
-                      <p className="text-[10px] text-faint">首次运行会在 Microsandbox microVM 内安装并保存快照；镜像或列表变化时自动生成新快照。</p>
+                      <label className="text-xs text-muted">Quicksand 工作目录（纯英文路径）</label>
+                      <input {...bind('sandbox.quicksandWorkspace')} type="text" className="form-input font-mono" placeholder={'D:\\quicksand-runtime\\workspace'} />
+                      <p className="text-[10px] text-faint">Python、JavaScript 与 Bash 均通过 Quicksand 执行，并保持完全断网。</p>
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">依赖安装超时 (秒)</label>
-                      <input {...bind('sandbox.dependencyInstallTimeoutSeconds')} type="number" min="30" className="form-input" />
+                      <label className="text-xs text-muted">Quicksand 内存 (MiB)</label>
+                      <input {...bind('sandbox.quicksandMemoryMiB')} type="number" min="128" className="form-input" />
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">快照构建最长时间 (秒)</label>
-                      <input {...bind('sandbox.dependencySnapshotTimeoutSeconds')} type="number" min="60" className="form-input" />
+                      <label className="text-xs text-muted">Quicksand vCPU</label>
+                      <input {...bind('sandbox.quicksandCpus')} type="number" min="1" max="1" className="form-input" />
+                      <p className="text-[10px] text-faint">Windows WHPX 媒体镜像固定 1 核，避免多核 guest-agent 卡死。</p>
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">microVM 内存 (MiB)</label>
-                      <input {...bind('sandbox.microsandboxMemoryMiB')} type="number" min="128" className="form-input" />
+                      <label className="text-xs text-muted">outputs 单文件回传上限 (MiB)</label>
+                      <input {...bind('sandbox.artifactMaxBytesMiB')} type="number" min="1" max="512" className="form-input" />
+                      <p className="text-[10px] text-faint">大文件分块落到宿主临时目录，QQ 上传结束后立即删除。</p>
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">microVM vCPU</label>
-                      <input {...bind('sandbox.microsandboxCpus')} type="number" min="1" className="form-input" />
-                    </div>
-                    <div className="toggle-switch-row">
-                      <span className="text-xs font-medium text-soft">允许受限公网访问</span>
-                      <Switch checked={localConfig.sandbox?.microsandboxNetwork !== false} onChange={(v) => setPath('sandbox.microsandboxNetwork', v)} />
-                    </div>
-                    <div className="flex-column gap-1.5 md:col-span-2">
-                      <label className="text-xs text-muted">Playwright 浏览器 OCI 镜像</label>
-                      <input {...bind('sandbox.microsandboxBrowserImage')} type="text" className="form-input" placeholder="mcr.microsoft.com/playwright:v1.61.0-noble" />
+                      <label className="text-xs text-muted">公网下载单文件上限 (MiB)</label>
+                      <input {...bind('sandbox.fetchMaxBytesMiB')} type="number" min="1" max="20" className="form-input" />
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">浏览器动作超时 (秒)</label>
-                      <input {...bind('sandbox.browserTimeoutSeconds')} type="number" min="1" className="form-input" />
+                      <label className="text-xs text-muted">公网下载超时 (秒)</label>
+                      <input {...bind('sandbox.fetchTimeoutSeconds')} type="number" min="5" max="120" className="form-input" />
                     </div>
                     <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">浏览器 microVM 内存 (MiB)</label>
-                      <input {...bind('sandbox.browserMemoryMiB')} type="number" min="512" className="form-input" />
+                      <label className="text-xs text-muted">FULL 联网任务上限 (秒)</label>
+                      <input {...bind('sandbox.fullNetworkTimeoutSeconds')} type="number" min="5" max="120" className="form-input" />
+                      <p className="text-[10px] text-danger">FULL 可访问任意网络目标，包括宿主机和局域网；仅主人请求可生效。</p>
                     </div>
-                    <div className="flex-column gap-1.5">
-                      <label className="text-xs text-muted">浏览器 microVM vCPU</label>
-                      <input {...bind('sandbox.browserCpus')} type="number" min="1" className="form-input" />
+                    <div className="flex-column gap-1.5 md:col-span-3">
+                      <label className="text-xs text-muted">公网下载域名白名单（每行一个，空表示任意公网域名）</label>
+                      <textarea {...bind('sandbox.fetchAllowedDomains')} rows="3" className="form-textarea font-mono" placeholder={'github.com\nraw.githubusercontent.com'} />
+                      <p className="text-[10px] text-faint">fetch_resource 仅允许 GET/HEAD 与标准端口；每次 DNS 解析和重定向都会拒绝本机、内网及元数据地址。Fake-IP 兼容仅对白名单域名生效。</p>
                     </div>
                   </div>
                 </div>
@@ -818,7 +876,7 @@ export default function Config({ localConfig, setLocalConfig, saveConfig, channe
 
               <div className="card">
                 <div className="flex-row justify-between items-center border-b pb-2 mb-3">
-                  <span className="text-xs font-bold text-muted">// 管理控制台本地服务</span>
+                  <span className="card-section-title">// 管理控制台本地服务</span>
                   <Switch {...bindSwitch('dashboard.enable')} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

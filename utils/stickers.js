@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { isGroupEvent, makeFaceSegment, normalizeSegment } from './bot.js'
+import { cosineSimilarity, embedTextsWithConfiguredGemini } from '../memory/embedding.js'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 export const DEFAULT_STICKER_DB = path.join(ROOT, 'data', 'stickers.sqlite')
@@ -101,6 +102,19 @@ export function openStickerStore (dbFile = DEFAULT_STICKER_DB) {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_stickers_enabled ON stickers (enabled, kind);
+
+    CREATE TABLE IF NOT EXISTS sticker_embeddings (
+      sticker_id INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimensions INTEGER NOT NULL,
+      vector BLOB NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(sticker_id, model, dimensions),
+      FOREIGN KEY(sticker_id) REFERENCES stickers(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_sticker_embeddings_model
+      ON sticker_embeddings (model, dimensions);
   `)
   ensureStickerMetadataSchema(db)
   backfillStickerMetadata(db)
@@ -493,7 +507,9 @@ export function deleteSticker (id, dbFile) {
   return openStickerStore(dbFile).prepare('DELETE FROM stickers WHERE id = ?').run(Number(id)).changes > 0
 }
 
-export function findSticker ({ emotion = '', kind = '', context = '' } = {}, dbFile, random = Math.random) {
+export function findSticker ({
+  emotion = '', kind = '', context = '', semanticScores, semanticWeight = 60, semanticMinSimilarity = 0.35
+} = {}, dbFile, random = Math.random) {
   let candidates = openStickerStore(dbFile)
     .prepare('SELECT * FROM stickers WHERE enabled = 1 ORDER BY id DESC LIMIT 200')
     .all()
@@ -521,9 +537,11 @@ export function findSticker ({ emotion = '', kind = '', context = '' } = {}, dbF
     for (const term of terms) {
       const normalizedTerm = normalizeSearchText(term)
       if (!normalizedTerm) continue
-      if (normalizedIntents.includes(normalizedTerm)) relevance += 120
-      if (normalizedText === normalizedTerm) relevance += 110
-      if (normalizedTags.includes(normalizedTerm)) relevance += 80
+      const intentMatched = normalizedIntents.includes(normalizedTerm)
+      if (intentMatched) relevance += 120
+      // intents 通常由 text/tags 推导；同一个核心意图只计一次，避免重复证据长期霸榜。
+      if (!intentMatched && normalizedText === normalizedTerm) relevance += 110
+      if (!intentMatched && normalizedTags.includes(normalizedTerm)) relevance += 80
       if (normalizedStyles.includes(normalizedTerm)) relevance += 25
       if (normalizedTags.some(tag => tag !== normalizedTerm && tag.includes(normalizedTerm))) relevance += 20
       if (normalizedDescription.includes(normalizedTerm)) relevance += 8
@@ -539,11 +557,152 @@ export function findSticker ({ emotion = '', kind = '', context = '' } = {}, dbF
       sticker.styles.filter(style => INCOMPATIBLE_INTENT_STYLES[intent]?.has(style))
     )
     const styleVeto = conflictingStyles.some(style => !normalizedContext.includes(normalizeSearchText(style))) ? 45 : 0
-    const usagePenalty = Math.min(sticker.useCount, 6) * 0.5
-    return { sticker, relevance, score: relevance + contextBonus - styleVeto - usagePenalty + random() * 2 }
+    // 只在同一核心意图候选中做轻量多样化，避免高频表情长期霸榜或刚发完马上重复。
+    const usagePenalty = Math.min(8, Math.log2(sticker.useCount + 1))
+    const age = sticker.lastUsedAt ? Date.now() - Number(sticker.lastUsedAt) : Infinity
+    const recentPenalty = age < 5 * 60000 ? 18 : age < 30 * 60000 ? 8 : age < 2 * 3600000 ? 2 : 0
+    const similarity = Number(semanticScores?.get?.(sticker.id))
+    const semanticBonus = Number.isFinite(similarity) && similarity >= semanticMinSimilarity
+      ? (similarity - semanticMinSimilarity) * semanticWeight
+      : 0
+    return {
+      sticker,
+      relevance,
+      score: relevance + contextBonus + semanticBonus - styleVeto - usagePenalty - recentPenalty + random() * 4
+    }
   }).filter(item => item.relevance > 0)
     .sort((a, b) => b.score - a.score)
   return scored[0]?.sticker || null
+}
+
+/** Gemini Embedding 模糊推荐；失败时无缝回退原有标签/语境排序。 */
+export async function findStickerWithEmbedding (
+  args = {}, config = {}, dbFile, { random = Math.random, logger = console, embedTexts } = {}
+) {
+  const settings = normalizeStickerEmbeddingConfig(config)
+  if (!settings.enable) return findSticker(args, dbFile, random)
+  try {
+    const stickers = listStickers({ enabled: true, limit: 200 }, dbFile).filter(isStickerAutoSendable)
+    if (!stickers.length) return null
+    const embed = embedTexts || ((texts, taskType) => embedTextsWithConfiguredGemini({
+      config,
+      channelId: settings.channelId,
+      model: settings.model,
+      dimensions: settings.dimensions,
+      texts,
+      taskType
+    }))
+    await syncStickerEmbeddings(stickers, settings, dbFile, embed, logger)
+    const query = [args.emotion, args.context].filter(Boolean).join('\n')
+    if (!query) return findSticker(args, dbFile, random)
+    const [queryVector] = await embed([query], 'RETRIEVAL_QUERY')
+    const stored = readStickerEmbeddings(dbFile, settings)
+    const semanticScores = new Map(stickers.map(sticker => [
+      sticker.id,
+      cosineSimilarity(queryVector, stored.get(sticker.id)?.vector)
+    ]))
+    return findSticker({
+      ...args,
+      semanticScores,
+      semanticWeight: settings.weight,
+      semanticMinSimilarity: settings.minSimilarity
+    }, dbFile, random)
+  } catch (error) {
+    logger?.warn?.(`[StickerEmbedding] 模糊推荐失败，回退标签排序: ${String(error?.message || error).slice(0, 200)}`)
+    return findSticker(args, dbFile, random)
+  }
+}
+
+function normalizeStickerEmbeddingConfig (config) {
+  const value = config?.stickers?.embedding || {}
+  const number = (input, fallback, min, max) => {
+    const parsed = Number(input)
+    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback
+  }
+  return {
+    enable: value.enable === true,
+    channelId: String(value.channelId || config?.memory?.embedding?.channelId || 'gemini').trim(),
+    model: String(value.model || config?.memory?.embedding?.model || 'gemini-embedding-2').trim(),
+    dimensions: Math.round(number(value.dimensions ?? config?.memory?.embedding?.dimensions, 768, 128, 3072)),
+    weight: number(value.weight, 60, 0, 200),
+    minSimilarity: number(value.minSimilarity, 0.35, -1, 1)
+  }
+}
+
+async function syncStickerEmbeddings (stickers, settings, dbFile, embed, logger) {
+  const db = openStickerStore(dbFile)
+  const documents = stickers.map(sticker => {
+    const content = buildStickerEmbeddingText(sticker)
+    return {
+      id: sticker.id,
+      content,
+      contentHash: createHash('sha256').update(content).digest('hex')
+    }
+  })
+  const existing = readStickerEmbeddings(dbFile, settings)
+  const pending = documents.filter(item => existing.get(item.id)?.contentHash !== item.contentHash)
+  const upsert = db.prepare(`
+    INSERT INTO sticker_embeddings (sticker_id, content_hash, model, dimensions, vector, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(sticker_id, model, dimensions) DO UPDATE SET
+      content_hash = excluded.content_hash,
+      vector = excluded.vector,
+      updated_at = excluded.updated_at
+  `)
+  // Gemini Embedding 2 支持 Content 列表；尽量单批完成，兼容低 RPM 配额的渠道。
+  for (let offset = 0; offset < pending.length; offset += 200) {
+    const batch = pending.slice(offset, offset + 200)
+    const vectors = await embed(batch.map(item => item.content), 'RETRIEVAL_DOCUMENT')
+    if (vectors.length !== batch.length) throw new Error(`Embedding 数量不匹配: ${vectors.length}/${batch.length}`)
+    for (let index = 0; index < batch.length; index++) {
+      const values = Float32Array.from(vectors[index] || [])
+      if (values.length !== settings.dimensions) {
+        throw new Error(`Embedding 维度不匹配: ${values.length}/${settings.dimensions}`)
+      }
+      upsert.run(
+        batch[index].id,
+        batch[index].contentHash,
+        settings.model,
+        settings.dimensions,
+        Buffer.from(values.buffer, values.byteOffset, values.byteLength),
+        Date.now()
+      )
+    }
+  }
+  const liveIds = new Set(documents.map(item => item.id))
+  const stale = db.prepare(`
+    SELECT sticker_id AS stickerId FROM sticker_embeddings WHERE model = ? AND dimensions = ?
+  `).all(settings.model, settings.dimensions).filter(row => !liveIds.has(Number(row.stickerId)))
+  const remove = db.prepare('DELETE FROM sticker_embeddings WHERE sticker_id = ? AND model = ? AND dimensions = ?')
+  for (const row of stale) remove.run(row.stickerId, settings.model, settings.dimensions)
+  if (pending.length || stale.length) {
+    logger?.info?.(`[StickerEmbedding] 新增/更新=${pending.length}, 清理=${stale.length}`)
+  }
+}
+
+function readStickerEmbeddings (dbFile, settings) {
+  const rows = openStickerStore(dbFile).prepare(`
+    SELECT sticker_id AS stickerId, content_hash AS contentHash, vector
+    FROM sticker_embeddings WHERE model = ? AND dimensions = ?
+  `).all(settings.model, settings.dimensions)
+  return new Map(rows.map(row => {
+    const bytes = Buffer.from(row.vector)
+    return [Number(row.stickerId), {
+      contentHash: row.contentHash,
+      vector: Array.from({ length: bytes.byteLength / 4 }, (_, index) => bytes.readFloatLE(index * 4))
+    }]
+  }))
+}
+
+function buildStickerEmbeddingText (sticker) {
+  const tags = sticker.tags.filter(tag => !isInternalStickerTag(tag))
+  return [
+    `表情意图: ${sticker.intents.join('、') || '未标注'}`,
+    `表情文字: ${sticker.text || '无'}`,
+    `语义标签: ${tags.join('、') || '无'}`,
+    `表达风格: ${sticker.styles.join('、') || '无'}`,
+    `画面与场景: ${sticker.description || '无'}`
+  ].join('\n')
 }
 
 /** 从模型最终文本中提取隐藏表情标记，并保留第一个标记在正文中的位置。 */
@@ -573,6 +732,7 @@ export function buildStickerDirectivePrompt (config, dbFile) {
   return `[QQ表情规则]
 你可以在最终回复正文中的任意自然位置添加一次 [sticker:标签]，发送层会将其替换成真实 QQ 表情，用户看不到该标记。
 大多数回复不要使用表情；仅在表情明显能增强当前语气时使用，不要连续或解释标记，每次最多一个。
+纯事实说明、工具执行结果、报错提示以及严肃或敏感话题通常不要添加表情。
 只能从以下核心意图中原样选择：${choices}。不要创造标签。发送层会根据相关性、风格和风险选择具体表情；正文仍保持当前角色的自然说话方式。`
 }
 

@@ -14,7 +14,7 @@ import { buildGroupLearningPrompt, maybeReviewGroupLearning } from '../memory/gr
 import { maybeReviewGroupMemberMemory } from '../memory/member-memory.js'
 import { resolveMemoryBaseDir } from '../memory/options.js'
 import { recordGroupIdentity } from '../memory/identity.js'
-import { resolveEventIdentity } from '../utils/identity.js'
+import { resolveEventIdentity, resolveMentionedUserId } from '../utils/identity.js'
 
 function resolveBaseDir () {
   return resolveMemoryBaseDir(getConfig(), PLUGIN_ROOT)
@@ -64,8 +64,7 @@ export class loliMemory extends plugin {
       rule: [
         { reg: '^#我的印象$', fnc: 'myMemory' },
         { reg: '^#我的记忆$', fnc: 'myMemory' },
-        { reg: '^#用户印象\\s+\\d+$', fnc: 'memberMemory' },
-        { reg: '^#群友记忆\\s+\\d+$', fnc: 'memberMemory' },
+        { reg: '^#(?:个人印象|用户印象|群友记忆)(?:\\s+.*)?$', fnc: 'memberMemory' },
         { reg: '^#立即更新我的印象$', fnc: 'learnMyMemoryNow' },
         { reg: '^#立即更新我的记忆$', fnc: 'learnMyMemoryNow' },
         { reg: '^#记忆诊断$', fnc: 'memoryDiagnostics' },
@@ -86,10 +85,19 @@ export class loliMemory extends plugin {
   }
 
   async memberMemory (e) {
-    if (!e.isMaster) return e.reply('只有主人可以查看其他群友的用户印象。')
     if (!e.isGroup) return e.reply('请发送在群聊中')
-    const uid = String(e.msg || '').match(/(\d+)\s*$/)?.[1]
-    return this.replyMemberMemory(e, String(e.group_id), uid, `群友 ${uid} 的用户印象`)
+    const actorId = String(e.user_id || e.sender?.user_id || '')
+    const uid = resolveMentionedUserId(e) || String(e.msg || '').match(/(\d+)\s*$/)?.[1] || ''
+    if (!uid) {
+      if (/^#个人印象\s*$/.test(String(e.msg || ''))) {
+        return this.replyMemberMemory(e, String(e.group_id), actorId, '你的用户印象')
+      }
+      return e.reply('请使用 #个人印象 @群友，或提供对方 QQ 号。')
+    }
+    if (uid === actorId) return this.replyMemberMemory(e, String(e.group_id), uid, '你的用户印象')
+    const identity = getGroupIdentity(resolveBaseDir(), String(e.group_id), uid)
+    const name = identity?.displayName || identity?.card || identity?.nickname || `QQ:${uid}`
+    return this.replyMemberMemory(e, String(e.group_id), uid, `${name}（QQ:${uid}）的用户印象`)
   }
 
   async replyMemberMemory (e, groupId, userId, title) {

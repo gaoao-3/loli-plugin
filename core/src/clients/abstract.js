@@ -116,7 +116,7 @@ export class AbstractClient {
    * @param {UnifiedMessage} [params.systemPrompt]
    * @param {Object[]} [params.tools] - 此轮可用的工具实例
    * @param {Object} [params.event] - Yunzai 事件，注入工具上下文
-   * @param {Object} [params.toolContext] - 额外工具上下文（如 anythingllm 客户端）
+   * @param {Object} [params.toolContext] - 额外工具上下文
    * @returns {Promise<{response: UnifiedMessage, finalText: string, usage?: Object}>}
    */
   async sendMessage ({ userMessage, conversationId, options = {}, systemPrompt, tools = [], toolProvider, event, toolContext }) {
@@ -130,7 +130,7 @@ export class AbstractClient {
     this.tools = activeTools
     // 请求选项优先于渠道选项；限制上界避免错误配置导致模型无限调用。
     const maxToolRounds = toolLimit(options.maxToolRounds ?? this.options.maxToolRounds, 8, 20)
-    const maxSameToolCalls = toolLimit(options.maxSameToolCalls ?? this.options.maxSameToolCalls, 2, 10)
+    const maxSameToolCalls = toolLimit(options.maxSameToolCalls ?? this.options.maxSameToolCalls, 5, 10)
     const historyLimit = toolLimit(options.historyLimit ?? this.options.historyLimit, 50, 200)
 
     // 1. 加载历史
@@ -151,8 +151,10 @@ export class AbstractClient {
 
     // 4. 首轮调用
     const callCount = {}
+    let toolLimitReached = null
     let currentResponse = await this.#sendAndLog(histories, {
       ...options,
+      conversationId,
       tools: this.#buildToolDefs(activeTools)
     }, 0)
     let usage = mergeTokenUsage(null, currentResponse.usage)
@@ -171,17 +173,25 @@ export class AbstractClient {
       const toolResults = []
 
       for (const tc of toolCalls) {
-        const key = tc.name
-        callCount[key] = (callCount[key] || 0) + 1
-
-        if (callCount[key] > maxSameToolCalls) {
-          toolResults.push({ toolId: tc.toolId, name: tc.name, content: `[TOOL_LIMIT] 调用次数已达上限 (${maxSameToolCalls})` })
+        const tool = activeTools.find(t => this.#toolName(t) === tc.name)
+        if (!tool) {
+          toolResults.push({
+            toolId: tc.toolId,
+            name: tc.name,
+            content: `[TOOL_NOT_FOUND] 工具 "${tc.name}" 当前不可用，本次未执行且不计入调用额度。未执行的工具没有生成任何输出或产物，禁止声称任务已成功。`
+          })
           continue
         }
 
-        const tool = activeTools.find(t => this.#toolName(t) === tc.name)
-        if (!tool) {
-          toolResults.push({ toolId: tc.toolId, name: tc.name, content: `[TOOL_NOT_FOUND] 工具 "${tc.name}" 未安装` })
+        const key = tc.name
+        callCount[key] = (callCount[key] || 0) + 1
+        if (callCount[key] > maxSameToolCalls) {
+          toolLimitReached = { name: tc.name, limit: maxSameToolCalls }
+          toolResults.push({
+            toolId: tc.toolId,
+            name: tc.name,
+            content: `[TOOL_LIMIT] 调用次数已达上限 (${maxSameToolCalls})，本次未执行，也没有生成任何输出或产物。禁止声称本次调用或依赖它的任务已成功。`
+          })
           continue
         }
 
@@ -211,6 +221,7 @@ export class AbstractClient {
       this.tools = activeTools
       currentResponse = await this.#sendAndLog(histories, {
         ...options,
+        conversationId,
         tools: this.#buildToolDefs(activeTools)
       }, round)
       usage = mergeTokenUsage(usage, currentResponse.usage)
@@ -220,7 +231,15 @@ export class AbstractClient {
     }
 
     // 7. 提取最终文本
-    const finalText = this._extractText(currentResponse)
+    let finalText = this._extractText(currentResponse)
+    if (toolLimitReached) {
+      finalText = `任务未完成：工具 "${toolLimitReached.name}" 已达到单次请求调用上限 (${toolLimitReached.limit})，最后一次调用没有执行，不能确认已生成输出或产物。请重新发起任务。`
+      currentResponse = {
+        ...currentResponse,
+        content: [{ type: 'text', text: finalText }]
+      }
+      await this.storage.saveHistory(currentResponse)
+    }
     if (usage) {
       this.logger(`[loli] token usage ${JSON.stringify({
         adapter: this.adapterType,
@@ -240,7 +259,7 @@ export class AbstractClient {
    * @param {Object} tool - 工具实例 { name, toolDef, run }
    * @param {Object} args - 工具参数
    * @param {Object} [event] - Yunzai 事件上下文
-   * @param {Object} [toolContext] - 额外工具上下文（如 anythingllm 客户端）
+   * @param {Object} [toolContext] - 额外工具上下文
    * @returns {Promise<string>}
    */
   async #executeTool (tool, args, event, toolContext) {

@@ -6,11 +6,10 @@
  * 由 apps/loli.js 的 init/destroy 方法负责。
  */
 import { loli } from './apps/loli.js'
-import { QQMusicAccount } from './apps/music_account.js'
 import { loliHelp } from './apps/help.js'
 import { loliMemory } from './apps/memory.js'
 import { loliUpdate } from './apps/update.js'
 import { loliStickers } from './apps/stickers.js'
 import { loliInteractions } from './apps/interactions.js'
 
-export { loli, QQMusicAccount, loliHelp, loliMemory, loliUpdate, loliStickers, loliInteractions }
+export { loli, loliHelp, loliMemory, loliUpdate, loliStickers, loliInteractions }

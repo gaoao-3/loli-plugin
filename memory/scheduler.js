@@ -16,6 +16,8 @@ import {
 } from './store.js'
 import { getMessageRetentionDays } from './options.js'
 import { resolveGeminiSafetySettings } from '../core/src/clients/gemini.js'
+import { GcilClient } from '../core/src/clients/gcil.js'
+import { AntigravityClient } from '../core/src/clients/antigravity.js'
 
 const MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000
 const FIRST_MAINTENANCE_DELAY_MS = 60 * 1000
@@ -113,24 +115,52 @@ export async function callMemoryAI (prompt, { task = 'member_memory', log } = {}
   const apiKey = channel?.options?.apiKey || ''
   const baseUrl = channel?.options?.baseUrl || ''
   const safetySettings = resolveGeminiSafetySettings(channel?.options?.safetyLevel)
-  if (!apiKey) throw new Error(`渠道 ${channel.id || channelId || 'unknown'} 未配置 API Key`)
-
-  const url = (baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '') +
-    `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
+  const adapterType = channel?.adapterType || 'gemini'
   const taskLabel = task === 'group_learning'
     ? '群风格学习'
     : task === 'history_compress'
       ? '会话历史压缩'
       : '群友用户印象'
+
+  // OAuth 渠道（GCIL / Antigravity）无 API Key，走对应客户端
+  if (adapterType === 'gcil' || adapterType === 'antigravity') {
+    log?.info?.(`[Memory] 调用${taskLabel}模型: channel=${channel.id || 'unknown'}, model=${model}`)
+    const dataDir = path.join(PLUGIN_ROOT, 'data')
+    const clientOpts = {
+      dataDir,
+      channelId: channel.id,
+      options: channel.options || {},
+      logger: message => log?.info?.(message)
+    }
+    const client = adapterType === 'gcil'
+      ? new GcilClient(clientOpts)
+      : new AntigravityClient(clientOpts)
+    const response = await client._sendMessage(
+      [{ role: 'user', content: [{ type: 'text', text: prompt }], timestamp: Date.now() }],
+      {
+        model,
+        maxTokens: task === 'member_memory' ? 1600 : 1024,
+        conversationId: `memory-${task}-${Date.now()}`,
+        disableTools: true
+      }
+    )
+    const text = client._extractText(response).trim()
+    if (!text) throw new Error(`渠道 ${channel.id || 'unknown'} / 模型 ${model}: 响应中没有文本`)
+    return text
+  }
+
+  if (!apiKey) throw new Error(`渠道 ${channel.id || channelId || 'unknown'} 未配置 API Key`)
+
+  const url = (baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '') +
+    `/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`
   log?.info?.(`[Memory] 调用${taskLabel}模型: channel=${channel.id || 'unknown'}, model=${model}`)
 
   const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: task === 'member_memory' ? 0.2 : 0.3,
         maxOutputTokens: task === 'member_memory' ? 1600 : 1024
       },
       ...(safetySettings ? { safetySettings } : {})
@@ -180,7 +210,7 @@ function resolveChannel (cfg, channelId) {
   if (channelId) {
     return channels.find(channel => channel.id === channelId && channel.status !== 'disabled')
   }
-  return channels.find(channel => channel.status !== 'disabled' && channel.adapterType === 'gemini') ||
+  return channels.find(channel => channel.status !== 'disabled' && ['gemini', 'aistudio'].includes(channel.adapterType)) ||
     channels.find(channel => channel.status !== 'disabled') ||
     channels[0]
 }

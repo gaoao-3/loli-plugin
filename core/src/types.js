@@ -7,9 +7,12 @@
  * @typedef {Object} ChannelConfig
  * @property {string} id
  * @property {string} name
- * @property {'gemini'|'openai'} adapterType
+ * @property {'gemini'|'aistudio'|'gcil'|'openai'|'antigravity'} adapterType
  * @property {string[]} models
  * @property {Object} options - adapter options (apiKey, baseUrl, etc.)
+ * @property {'generateContent'|'interactions'} [options.apiMode='generateContent'] Gemini 请求协议
+ * @property {boolean} [options.interactionsFallback=true] Interactions 不兼容时回退旧协议
+ * @property {Array<'google_search'|'code_execution'|'google_maps'|'url_context'>} [options.builtinTools] Gemini 服务端原生工具
  * @property {'public'|'private'} [visibility='public']
  * @property {'enabled'|'disabled'} [status='enabled']
  */
@@ -24,13 +27,13 @@
  * @property {number} [sendMessageOption.temperature=0.9]
  * @property {number} [sendMessageOption.maxTokens=2048]
  * @property {boolean} [sendMessageOption.enableReasoning=false]
- * @property {'OFF'|'LOW'|'MEDIUM'|'HIGH'} [sendMessageOption.thinkingLevel]
+ * @property {'MINIMAL'|'LOW'|'MEDIUM'|'HIGH'} [sendMessageOption.thinkingLevel]
  * @property {'low'|'medium'|'high'} [sendMessageOption.reasoningEffort]
  * @property {'default'|'off'|'permissive'|'balanced'|'strict'} [sendMessageOption.safetyLevel]
  * @property {boolean} [sendMessageOption.logApiResponses=true]
  * @property {number} [sendMessageOption.apiResponseLogMaxLength=4000]
  * @property {number} [sendMessageOption.maxToolRounds=8] 工具调用循环轮数，范围 1-20
- * @property {number} [sendMessageOption.maxSameToolCalls=2] 同一工具每轮请求调用次数，范围 1-10
+ * @property {number} [sendMessageOption.maxSameToolCalls=5] 同一工具每轮请求调用次数，范围 1-10
  * @property {Object} [systemPrompt]
  * @property {'enabled'|'disabled'} [status='enabled']
  */

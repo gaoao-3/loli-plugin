@@ -143,10 +143,9 @@ async function requestClassification (engine, stickerId, request, prompt, struct
     },
     overrideOptions: {
       model: request.model,
-      temperature: 0.1,
       maxTokens: 1024,
       enableReasoning: false,
-      thinkingLevel: 'OFF',
+      thinkingLevel: 'MINIMAL',
       disableTools: true,
       ...(structured
         ? { responseMimeType: 'application/json', responseJsonSchema: CLASSIFICATION_JSON_SCHEMA }

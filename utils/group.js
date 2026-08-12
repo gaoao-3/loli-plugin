@@ -466,9 +466,5 @@ function getHistoryMessageText (chat) {
 
 function segmentToContextText (segment) {
   if (segment.type === 'text') return segment.text || ''
-  if (segment.type === 'at') {
-    const qq = segment.qq || segment.user_id || '未知QQ'
-    return `@${segment.text || qq}(QQ:${qq})`
-  }
   return formatOneBotSegmentText(segment, { includeReply: false })
 }

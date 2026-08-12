@@ -13,18 +13,28 @@
  */
 import fs from 'fs'
 import path from 'path'
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { DatabaseSync } from 'node:sqlite'
 
 /** 历史中工具结果保留的最大字符数；当轮模型已看过全文，历史只留梗概 */
 const HISTORY_TOOL_RESULT_MAX_CHARS = 2000
 
-function atomicWriteJson (file, value) {
+function serializeJson (value) {
+  const serialized = JSON.stringify(value, null, 2)
+  if (serialized === undefined) throw new TypeError('value is not JSON serializable')
+  return serialized
+}
+
+function contentSignature (serialized) {
+  return `${Buffer.byteLength(serialized)}:${createHash('sha256').update(serialized).digest('base64url')}`
+}
+
+function atomicWriteJson (file, serialized) {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`
   let fd
   try {
     fd = fs.openSync(temp, 'wx', 0o600)
-    fs.writeFileSync(fd, JSON.stringify(value, null, 2), 'utf8')
+    fs.writeFileSync(fd, serialized, 'utf8')
     fs.fsyncSync(fd)
     fs.closeSync(fd)
     fd = undefined
@@ -73,7 +83,10 @@ export class LoliStorage {
   #dataDir
   /** @type {Map<string, any>} */
   #cache = new Map()
-  #dirty = false
+  /** @type {Map<string, string>} 最近一次成功读取或落盘内容的定长摘要。 */
+  #persistedSignatures = new Map()
+  /** @type {Map<string, string>} 已序列化的待写快照；避免 flush 时重复序列化。 */
+  #pendingJson = new Map()
   #flushTimer = null
   /** @type {DatabaseSync|null} */
   #db = null
@@ -82,6 +95,11 @@ export class LoliStorage {
 
   constructor (dataDir) {
     this.#dataDir = dataDir
+  }
+
+  /** 数据根目录（供需要独立密钥文件的内部适配器使用）。 */
+  get dataDir () {
+    return this.#dataDir
   }
 
   /** 打开 */
@@ -145,7 +163,7 @@ export class LoliStorage {
   /** 关闭 */
   close () {
     clearTimeout(this.#flushTimer)
-    if (this.#dirty) this.#flush()
+    if (this.#pendingJson.size > 0) this.#flush()
     this.#db?.close()
     this.#db = null
   }
@@ -192,10 +210,19 @@ export class LoliStorage {
 
   // ─── 核心 KV ──────────────────────────────────
 
-  async put (key, value) {
+  async put (key, value, { force = false } = {}) {
+    if (!this.#cache.has(key) && !this.#persistedSignatures.has(key)) await this.get(key)
+    const serialized = serializeJson(value)
+    const signature = contentSignature(serialized)
     this.#cache.set(key, value)
-    this.#dirty = true
+    if (!force && this.#persistedSignatures.get(key) === signature) {
+      this.#pendingJson.delete(key)
+      if (this.#pendingJson.size === 0) clearTimeout(this.#flushTimer)
+      return value
+    }
+    this.#pendingJson.set(key, serialized)
     this.#scheduleFlush()
+    return value
   }
 
   async get (key) {
@@ -204,8 +231,10 @@ export class LoliStorage {
     const file = this.#keyToFile(key)
     if (fs.existsSync(file)) {
       try {
-        const val = JSON.parse(fs.readFileSync(file, 'utf8'))
+        const raw = fs.readFileSync(file, 'utf8')
+        const val = JSON.parse(raw)
         this.#cache.set(key, val)
+        this.#persistedSignatures.set(key, contentSignature(raw))
         return val
       } catch {}
     }
@@ -214,14 +243,16 @@ export class LoliStorage {
 
   async remove (key) {
     this.#cache.delete(key)
+    this.#persistedSignatures.delete(key)
+    this.#pendingJson.delete(key)
     const file = this.#keyToFile(key)
     try { fs.unlinkSync(file) } catch {}
-    this.#dirty = true
+    if (this.#pendingJson.size === 0) clearTimeout(this.#flushTimer)
   }
 
   /** 立即把待写 KV 持久化；管理接口在返回成功前调用。 */
   flush () {
-    if (!this.#dirty) return
+    if (this.#pendingJson.size === 0) return
     try {
       this.#flushSync()
     } catch (err) {
@@ -266,9 +297,9 @@ export class LoliStorage {
 
   listChannels () { return this.getAllByPrefix('ch') }
   getChannel (id) { return this.get('ch:' + id) }
-  async saveChannel (ch) {
+  async saveChannel (ch, options) {
     ch.id = ch.id || randomUUID()
-    await this.put('ch:' + ch.id, ch)
+    await this.put('ch:' + ch.id, ch, options)
     return ch
   }
   deleteChannel (id) { return this.remove('ch:' + id) }
@@ -277,9 +308,9 @@ export class LoliStorage {
 
   listPresets () { return this.getAllByPrefix('pr') }
   getPreset (id) { return this.get('pr:' + id) }
-  async savePreset (p) {
+  async savePreset (p, options) {
     p.id = p.id || randomUUID()
-    await this.put('pr:' + p.id, p)
+    await this.put('pr:' + p.id, p, options)
     return p
   }
   deletePreset (id) { return this.remove('pr:' + id) }
@@ -364,12 +395,44 @@ export class LoliStorage {
       this.#db.exec('ROLLBACK')
       throw err
     }
+    // 服务端 Interaction 仍含压缩前全文，必须失效后用本地摘要重建。
+    this.clearInteractionStates(cid)
   }
 
   async clearHistory (conversationId) {
     const cid = String(conversationId || 'global')
     this.#stmts.deleteConversation.run(cid)
     this.#stmts.deleteSummary.run(cid)
+    this.clearInteractionStates(cid)
+  }
+
+  /** 清除某会话（或全部会话）的 Gemini Interactions 服务端状态引用。 */
+  clearInteractionStates (conversationId) {
+    const cid = conversationId === undefined ? null : String(conversationId || 'global')
+    for (const [key, value] of [...this.#cache.entries()]) {
+      if (!key.startsWith('ix:')) continue
+      if (cid === null || String(value?.conversationId) === cid) {
+        this.#cache.delete(key)
+        this.#persistedSignatures.delete(key)
+        this.#pendingJson.delete(key)
+      }
+    }
+    if (this.#pendingJson.size === 0) clearTimeout(this.#flushTimer)
+
+    const dir = path.join(this.#dataDir, 'ix')
+    if (fs.existsSync(dir)) {
+      for (const file of fs.readdirSync(dir)) {
+        if (!file.endsWith('.json')) continue
+        const filePath = path.join(dir, file)
+        try {
+          const value = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+          if (cid === null || String(value?.conversationId) === cid) fs.unlinkSync(filePath)
+        } catch {}
+      }
+      try {
+        if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir)
+      } catch {}
+    }
   }
 
   /**
@@ -382,6 +445,7 @@ export class LoliStorage {
     if (!Number.isFinite(cutoff) || cutoff <= 0) return { deleted: 0, bytes: 0 }
     const stats = this.#stmts.pruneStats.get(cutoff)
     this.#stmts.pruneDelete.run(cutoff)
+    if (Number(stats.deleted) > 0) this.clearInteractionStates()
     return { deleted: Number(stats.deleted) || 0, bytes: Number(stats.bytes) || 0 }
   }
 
@@ -430,12 +494,12 @@ export class LoliStorage {
   }
 
   #flush () {
-    const entries = [...this.#cache.entries()]
-    for (const [key, value] of entries) {
+    for (const [key, serialized] of [...this.#pendingJson.entries()]) {
       const file = this.#keyToFile(key)
       // 原子写入：先写 tmp 再 rename
-      atomicWriteJson(file, value)
+      atomicWriteJson(file, serialized)
+      this.#persistedSignatures.set(key, contentSignature(serialized))
+      this.#pendingJson.delete(key)
     }
-    this.#dirty = false
   }
 }

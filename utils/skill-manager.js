@@ -28,6 +28,23 @@ function findSkillDirectories (root) {
   return candidates
 }
 
+function listSafeSkillResources (root, current = root, depth = 0, output = []) {
+  if (depth > 4 || output.length >= 100) return output
+  for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (output.length >= 100) break
+    if (entry.isSymbolicLink()) continue
+    const target = path.join(current, entry.name)
+    if (entry.isDirectory()) {
+      listSafeSkillResources(root, target, depth + 1, output)
+      continue
+    }
+    if (!entry.isFile() || entry.name === 'SKILL.md') continue
+    if (!SAFE_RESOURCE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
+    output.push(path.relative(root, target).replace(/\\/g, '/'))
+  }
+  return output
+}
+
 function parseSkillFile (filePath) {
   const source = fs.readFileSync(filePath, 'utf8')
   const match = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/)
@@ -46,14 +63,6 @@ function normalizeAllowedTools (value) {
     ? value
     : String(value || '').split(/[\s,]+/u)
   return [...new Set(entries.map(item => String(item).trim()).filter(Boolean))]
-}
-
-function toolName (tool) {
-  return tool?.name ||
-    tool?.toolDef?.name ||
-    tool?.toolDef?.function?.name ||
-    tool?.function?.name ||
-    ''
 }
 
 export function normalizeSkillsConfig (value = {}, pluginRoot = process.cwd()) {
@@ -126,7 +135,7 @@ export class SkillManager {
     this.scan()
     if (!this.#allowed(context) || this.#skills.size === 0) return ''
     const lines = [...this.#skills.values()].map(skill => `- ${skill.name}: ${skill.description}`)
-    return `[可用 Skills]\n遇到匹配任务时先调用 activate_skill 获取完整工作流；不要凭名称猜测说明。\n${lines.join('\n')}`
+    return `[可用 Skills]\n仅当当前目标明确匹配某个复杂工作流时，由你自行调用 activate_skill 加载完整说明。Skill 不授予或解锁 Tool；普通动作直接使用已有 Tool。不要复述工作流，也不要改变既有人格和语气。\n${lines.join('\n')}`
   }
 
   getTools (context = {}) {
@@ -139,7 +148,7 @@ export class SkillManager {
         name: 'activate_skill',
         toolDef: {
           name: 'activate_skill',
-          description: '加载一个已安装 Skill 的完整操作说明。匹配到可用 Skill 时先调用。',
+          description: '按需加载一个已安装 Skill 的完整工作流说明。仅在当前目标明确匹配时由模型自主调用；不会授予或解锁其他 Tool。',
           parameters: {
             type: 'object',
             properties: { name: { type: 'string', enum: names, description: 'Skill 名称' } },
@@ -171,25 +180,9 @@ export class SkillManager {
     return tools
   }
 
-  /**
-   * 返回当前请求已激活 Skill 允许使用的本地工具。
-   * Skills 关闭时保持旧行为：本地工具全部可用。
-   */
-  getLocalTools (availableTools = [], context = {}) {
-    this.scan()
-    const config = normalizeSkillsConfig(this.#getConfig(), this.#pluginRoot)
-    if (!config.enable) return [...availableTools]
-    if (this.#skills.size === 0) return [...availableTools]
-    if (!this.#allowed(context)) return []
-    const activatedSkills = context?.toolState?.activatedSkills
-    if (!(activatedSkills instanceof Set) || activatedSkills.size === 0) return []
-
-    const allowedNames = new Set()
-    for (const skillName of activatedSkills) {
-      const skill = this.#skills.get(String(skillName))
-      for (const name of (skill?.allowedTools || [])) allowedNames.add(name)
-    }
-    return availableTools.filter(tool => allowedNames.has(toolName(tool)))
+  /** Skill 是工作流说明，不参与 Tool 授权；Tool 始终按自身配置与服务端权限开放。 */
+  getLocalTools (availableTools = []) {
+    return [...availableTools]
   }
 
   activate (name, context = {}) {
@@ -200,10 +193,14 @@ export class SkillManager {
       context.toolState.activatedSkills.add(skill.name)
     }
     const adapter = getRuntimeAdapter(skill)
-    const prefix = `[Skill activated: ${skill.name}]${adapter ? `\n${adapter}` : ''}\n`
+    const resources = listSafeSkillResources(skill.dir)
+    const resourceIndex = resources.length > 0
+      ? `\n[Readable bundled resources]\n${resources.map(resource => `- ${resource}`).join('\n')}\n`
+      : ''
+    const prefix = `[Skill activated: ${skill.name}]\nThis Skill provides workflow guidance only. It does not grant tools or change the established persona and tone.${adapter ? `\n${adapter}` : ''}${resourceIndex}\n`
     const availableChars = Math.max(0, MAX_SKILL_CHARS - prefix.length)
-    const content = skill.source.slice(0, availableChars)
-    return `${prefix}${content}${skill.source.length > availableChars ? '\n…[truncated]' : ''}`
+    const content = skill.body.slice(0, availableChars)
+    return `${prefix}${content}${skill.body.length > availableChars ? '\n…[truncated]' : ''}`
   }
 
   readResource (skillName, relativePath) {

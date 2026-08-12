@@ -1,7 +1,7 @@
 /**
- * run_code — Microsandbox microVM 隔离代码执行工具
+ * run_code — Quicksand microVM 隔离代码执行工具
  *
- * 代码在本机 Microsandbox microVM 中隔离执行，无法访问机器人本机。
+ * 代码在本机 microVM 中隔离执行，无法访问机器人本机。
  *
  * QQ 媒体 IO（sandbox.mediaIO，默认开启）：
  * - 当前消息与引用消息中的图片/闪照/视频/语音/文件，在执行前自动下载并写入沙盒 /workspace/inputs/；
@@ -22,6 +22,7 @@ import {
   normalizeMessageSelector
 } from '../group-message.js'
 import { executeCode, LANGUAGES } from '../sandbox.js'
+import { queueFetchedResource } from './fetch_resource.js'
 
 /** 输入媒体限制 */
 const MAX_INPUT_ITEMS = 4
@@ -431,6 +432,7 @@ function createResourceManifestInput (mediaInputs, filter) {
   if (mediaInputs.length === 0) return null
   const manifest = {
     version: 2,
+    primaryFile: mediaInputs[0].filename,
     selection: {
       source: filter.source,
       senderId: filter.senderId || null,
@@ -452,6 +454,7 @@ function createResourceManifestInput (mediaInputs, filter) {
       mediaType: input.resource?.mediaType || null,
       typeIndex: input.resource?.typeIndex || null,
       fileId: input.resource?.fileId || null,
+      ...(input.resource?.url ? { url: input.resource.url } : {}),
       ...(input.resource?.originalName ? { originalName: input.resource.originalName } : {}),
       ...(input.requestedName ? { requestedName: input.requestedName } : {}),
       size: input.bytes.byteLength
@@ -484,9 +487,10 @@ export async function deliverArtifacts (event, artifacts, workDir) {
     const filename = path.basename(String(a.filename || 'artifact.bin'))
     const ext = String(filename.split('.').pop() || '').toLowerCase()
     const mime = mimeOf(ext)
-    const local = path.join(workDir, `${Date.now()}_${filename}`)
+    const suppliedPath = typeof a.localPath === 'string' ? path.resolve(a.localPath) : ''
+    const local = suppliedPath || path.join(workDir, `${Date.now()}_${filename}`)
     try {
-      fs.writeFileSync(local, a.bytes)
+      if (!suppliedPath) fs.writeFileSync(local, a.bytes)
       if (mime.startsWith('image/')) {
         await event.reply(makeImageSegment(local))
       } else if (mime.startsWith('video/')) {
@@ -506,6 +510,9 @@ export async function deliverArtifacts (event, artifacts, workDir) {
       skipped.push(filename)
     } finally {
       fs.rmSync(local, { force: true })
+      if (suppliedPath) {
+        try { fs.rmdirSync(path.dirname(suppliedPath)) } catch {}
+      }
     }
   }
   return { sent, skipped }
@@ -535,6 +542,7 @@ export function buildExecutionReportNodes ({ code, language, inputs = [], output
   const summary = [
     `状态：${status}`,
     `语言：${language || 'unknown'}`,
+    `后端：${output.backend || 'quicksand'}`,
     `耗时：${durationMs} ms`,
     `输入：${inputs.length ? inputs.map(item => `inputs/${item.filename}`).join('、') : '无'}`,
     `outputs 产物：${artifacts.length ? artifacts.map(item => `${item.filename} (${item.size ?? item.bytes?.byteLength ?? 0} bytes)`).join('、') : '无'}`
@@ -584,7 +592,13 @@ async function queueOrSendExecutionReport (context, event, report) {
  * @param {Function} [execute] - 测试注入用，缺省为 executeCode
  * @returns {Promise<string>} JSON 字符串
  */
-export async function runCode (args, context, cfg, execute = executeCode) {
+export async function runCode (
+  args,
+  context,
+  cfg,
+  execute = executeCode,
+  fetchResource = queueFetchedResource
+) {
   if (!cfg?.enable) {
     return JSON.stringify({
       error: '代码沙盒未启用',
@@ -604,7 +618,64 @@ export async function runCode (args, context, cfg, execute = executeCode) {
   const mediaIO = cfg.mediaIO !== false && event
   const language = args.language || cfg.defaultLanguage
   const startedAt = Date.now()
-  let inputs = []
+  const networkMode = String(
+    args?.network?.mode || (args?.network?.enabled === true ? 'controlled' : 'none')
+  ).toLowerCase()
+  if (!['none', 'controlled', 'full'].includes(networkMode)) {
+    return JSON.stringify({ error: `不支持的联网模式 ${networkMode}` })
+  }
+  if (networkMode === 'full') {
+    if (cfg.fullNetworkEnable !== true) {
+      return JSON.stringify({
+        error: 'FULL 原始联网未获宿主配置授权',
+        reason: 'full_network_disabled'
+      })
+    }
+    if (event?.isMaster !== true) {
+      return JSON.stringify({
+        error: 'FULL 原始联网强制仅机器人主人可用',
+        reason: 'full_network_master_only'
+      })
+    }
+  }
+  const requestedNetwork = networkMode === 'controlled'
+  const networkResources = Array.isArray(args?.network?.resources) ? args.network.resources : []
+  if (requestedNetwork) {
+    if (networkResources.length === 0) {
+      return JSON.stringify({
+        error: 'network.mode=controlled 时必须提供 resources URL 列表',
+        reason: 'network_resources_required'
+      })
+    }
+    if (networkResources.length > MAX_INPUT_ITEMS) {
+      return JSON.stringify({ error: `单次最多预取 ${MAX_INPUT_ITEMS} 个公网资源` })
+    }
+    if (!context || typeof context !== 'object') {
+      return JSON.stringify({ error: '当前工具上下文不支持受控公网预取' })
+    }
+    if (!Array.isArray(context.fetchedResources)) context.fetchedResources = []
+    try {
+      for (const resource of networkResources) {
+        await fetchResource({
+          url: resource?.url,
+          filename: resource?.filename,
+          method: 'GET'
+        }, context, cfg)
+      }
+    } catch (error) {
+      context.fetchedResources.splice(0, context.fetchedResources.length)
+      return JSON.stringify({
+        error: `受控公网预取失败: ${error.message}`,
+        reason: 'network_fetch_failed'
+      })
+    }
+  }
+  const fetchedQueue = Array.isArray(context?.fetchedResources) ? context.fetchedResources : []
+  const fetchedInputs = fetchedQueue
+    .filter(input => input?.bytes?.byteLength > 0 && input.bytes.byteLength <= MAX_INPUT_BYTES)
+    .slice(0, MAX_INPUT_ITEMS)
+  fetchedQueue.splice(0, fetchedQueue.length)
+  let inputs = [...fetchedInputs]
 
   try {
     if (mediaIO) {
@@ -624,13 +695,17 @@ export async function runCode (args, context, cfg, execute = executeCode) {
         ? { inputs: [], location: null }
         : await collectEventMediaDetailed(event, {
             resourceFilter: args?.resource_filter,
-            maxTotalBytes: MAX_INPUT_TOTAL_BYTES
+            maxTotalBytes: Math.max(
+              0,
+              MAX_INPUT_TOTAL_BYTES - fetchedInputs.reduce((sum, input) => sum + input.bytes.byteLength, 0)
+            )
           })
       const eventBytes = eventResult.inputs.reduce((sum, input) => sum + input.bytes.byteLength, 0)
+      const fetchedBytes = fetchedInputs.reduce((sum, input) => sum + input.bytes.byteLength, 0)
       const historyResult = (filter.source === 'history' || (filter.source === 'auto' && filter.explicit))
         ? await collectHistoryMediaDetailed(event, {
             resourceFilter: args?.resource_filter,
-            maxTotalBytes: Math.max(0, MAX_INPUT_TOTAL_BYTES - eventBytes)
+            maxTotalBytes: Math.max(0, MAX_INPUT_TOTAL_BYTES - fetchedBytes - eventBytes)
           })
         : { inputs: [], location: null }
       const eventInputs = eventResult.inputs
@@ -643,7 +718,16 @@ export async function runCode (args, context, cfg, execute = executeCode) {
         modelInputs = collectUserMessageImages(context?.userMessage, { resourceFilter: args?.resource_filter })
       }
 
-      const mediaInputs = mergeResourceInputs(filter, inputName, eventInputs, historyInputs, modelInputs)
+      const remainingItems = Math.max(0, filter.maxItems - fetchedInputs.length)
+      const mediaInputs = remainingItems > 0
+        ? mergeResourceInputs(
+            { ...filter, maxItems: remainingItems },
+            inputName,
+            eventInputs,
+            historyInputs,
+            modelInputs
+          )
+        : []
       if (filter.explicit && mediaInputs.length === 0) {
         const locations = [eventResult.location, historyResult.location].filter(Boolean)
         const ambiguous = locations.find(location => location.reason === 'ambiguous_sender')
@@ -668,14 +752,18 @@ export async function runCode (args, context, cfg, execute = executeCode) {
           }
         })
       }
-      const manifestInput = createResourceManifestInput(mediaInputs, filter)
-      inputs = manifestInput ? [...mediaInputs, manifestInput] : []
+      inputs = [...fetchedInputs, ...mediaInputs]
     }
-    const output = await execute({ code, language, cfg, inputs })
+    const manifestFilter = normalizeResourceFilter(args?.resource_filter)
+    const manifestInput = createResourceManifestInput(inputs, manifestFilter)
+    if (manifestInput) inputs.push(manifestInput)
+    const output = await execute({ code, language, cfg, inputs, networkMode })
 
-    // 产物回发 QQ；无法/未发送的只在结果里计数说明
+    // 产物回发 QQ；必须把真实发送状态返回给模型，禁止仅凭 stdout 宣称已发送
     const artifacts = Array.isArray(output.artifacts) ? output.artifacts : []
+    const artifactWarnings = Array.isArray(output.artifactWarnings) ? output.artifactWarnings : []
     delete output.artifacts
+    delete output.artifactWarnings
     if (cfg.executionReport !== false) {
       await queueOrSendExecutionReport(context, event, {
         language,
@@ -697,16 +785,29 @@ export async function runCode (args, context, cfg, execute = executeCode) {
         const { sent, skipped } = await deliverArtifacts(event, artifacts, path.join(DATA_DIR, 'sandbox'))
         if (sent.length > 0) output.sentArtifacts = sent
         if (skipped.length > 0) output.skippedArtifacts = skipped
+        output.artifactDeliveryStatus = skipped.length === 0 ? 'sent' : 'partial'
       } else {
+        for (const artifact of artifacts) {
+          if (artifact.localPath) {
+            fs.rmSync(artifact.localPath, { force: true })
+            try { fs.rmdirSync(path.dirname(artifact.localPath)) } catch {}
+          }
+        }
         output.artifactCount = artifacts.length
-      output.artifactHint = `生成了 ${artifacts.length} 个产物文件（outputs/），产物回发未启用`
+        output.artifactDeliveryStatus = 'disabled'
+        output.artifactHint = `生成了 ${artifacts.length} 个产物文件（outputs/），但产物回发未启用；不得告诉用户已经发送`
       }
+    }
+    if (artifactWarnings.length > 0) {
+      output.artifactWarnings = artifactWarnings
+      output.artifactDeliveryStatus = artifacts.length > 0 ? 'partial' : 'failed'
+      output.artifactHint = '部分或全部 outputs/ 产物未能回传；不得告诉用户已经发送'
     }
     return JSON.stringify(output)
   } catch (err) {
     const output = {
       error: `沙盒执行失败: ${err.message}`,
-      hint: '请运行 npx msb doctor 检查 WHP，并确认 Microsandbox 镜像可拉取'
+      hint: '请检查 quicksandPython、纯英文工作目录、WHP 和对应语言的 Quicksand 保存镜像'
     }
     if (cfg.executionReport !== false) {
       await queueOrSendExecutionReport(context, event, {
@@ -730,12 +831,13 @@ class RunCode extends CustomTool {
 
   function = {
     name: 'run_code',
-    description: `在隔离的 microVM/容器沙盒中执行代码并返回输出，支持 ${LANGUAGES.join('/')}。
+    description: `在隔离的 Quicksand microVM 中执行代码并返回输出，支持 ${LANGUAGES.join('/')}。
 代码无法访问机器人本机文件与内网；用 print/console.log 等输出结果，单次执行有超时限制。
-当前消息和引用消息可直接取资源；群历史会在调用工具时按发送者、消息 ID/seq、消息内媒体序号直接查询定位，模型预加载图片仅作失败兜底；resource_manifest.json 会列出 media_* 文件对应的发送者 QQ、昵称、消息与来源，代码应先读清单再选择资源；
-可在 resource_filter.input_name 中为定位到的资源指定沙盒内别名；history/auto 模式必须同时传 message_id，只有明确的 current/quoted 可省略 ID；扩展名由真实媒体类型决定，代码不确定类型时应使用 inputs/别名.* 查找；
+模型可选择 network.mode：none 完全断网；controlled 由宿主审核并预取明确 URL；full 让 VM 获得原始网络，仅主人且宿主危险开关已授权时可用。优先 controlled，仅动态 API、包管理等无法预取的任务才申请 full。
+当前消息和引用消息可直接取资源；群历史会在调用工具时按发送者、消息 ID/seq、消息内媒体序号直接查询定位，模型预加载图片仅作失败兜底；inputs/resource_manifest.json 的 primaryFile 和 resources[].file 是媒体文件名，代码必须按清单选文件；
+严禁用 os.listdir('inputs')[0]、glob('*')[0] 等方式猜输入，因为 inputs 同时包含 resource_manifest.json；可在 resource_filter.input_name 中指定别名，再按 inputs/别名.* 精确查找。history/auto 模式必须同时传 message_id，只有明确的 current/quoted 可省略 ID；扩展名由真实媒体类型决定；
 需要发回给用户的图片、音视频、TXT、JSON、CSV、PDF、ZIP 等文件请保存到 outputs/ 目录，执行后会自动通过 QQ 发送。
-Microsandbox 默认 Python 镜像较精简，缺包时用 subprocess 调用 pip 安装。
+Python 默认预装 Pillow；其他依赖应预先加入保存镜像。
 适用：数学计算、数据处理、格式转换、算法验证、图像/音视频处理等需要真实运行代码的场景。`,
     parameters: {
       type: 'object',
@@ -748,6 +850,42 @@ Microsandbox 默认 Python 镜像较精简，缺包时用 subprocess 调用 pip 
           type: 'string',
           enum: LANGUAGES,
           description: '编程语言，默认 python'
+        },
+        network: {
+          type: 'object',
+          description: '由模型判断联网模式。优先 none/controlled；只有必须动态联网时才申请 full',
+          properties: {
+            mode: {
+              type: 'string',
+              enum: ['none', 'controlled', 'full'],
+              description: 'none=断网；controlled=宿主预取明确 URL；full=VM 原始网络（危险，仅主人且需宿主授权）'
+            },
+            enabled: {
+              type: 'boolean',
+              description: '兼容旧参数；true 等同 mode=controlled，建议改用 mode'
+            },
+            resources: {
+              type: 'array',
+              maxItems: MAX_INPUT_ITEMS,
+              description: '需要在执行前下载并放入 inputs/ 的公开资源',
+              items: {
+                type: 'object',
+                properties: {
+                  url: {
+                    type: 'string',
+                    description: '明确的公开 http(s) URL'
+                  },
+                  filename: {
+                    type: 'string',
+                    maxLength: 180,
+                    description: '可选的 inputs/ 纯文件名'
+                  }
+                },
+                required: ['url']
+              }
+            }
+          },
+          required: ['mode']
         },
         resource_filter: {
           type: 'object',

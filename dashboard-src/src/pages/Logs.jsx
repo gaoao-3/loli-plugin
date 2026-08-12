@@ -10,7 +10,7 @@ const LEVEL_TEXT = {
 
 const LEVEL_TAG = {
   DEBUG: 'bg-elevated text-soft border-default',
-  INFO: 'bg-accent-soft text-accent border-accent-soft',
+  INFO: 'log-tag-info',
   WARN: 'bg-warning-soft text-warning border-warning-soft',
   ERROR: 'bg-danger-soft text-danger border-danger-soft'
 }
@@ -33,7 +33,7 @@ export default function Logs({ logs, autoRefresh, setAutoRefresh, levelFilter, s
     <div className="pane-content logs-pane-content flex-column gap-4 select-text">
       <div className="flex-row flex-wrap justify-between items-center gap-4 flex-shrink-0">
         <div className="flex-row gap-3 flex-wrap items-center">
-          <h2 className="text-lg font-bold text-strong">// 终端日志</h2>
+          <h2 className="page-hero-title">终端日志</h2>
           <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)} className="form-select py-1 w-[160px]">
             <option value="ALL">所有日志 (ALL)</option>
             <option value="DEBUG">运行调试 (DEBUG)</option>
@@ -58,12 +58,12 @@ export default function Logs({ logs, autoRefresh, setAutoRefresh, levelFilter, s
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 border border-default bg-deep rounded-lg overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 border border-default bg-deep rounded-lg overflow-hidden flex flex-col logs-terminal">
         <div className="flex-column h-full min-h-0 relative">
           <div className="h-8 bg-inset border-b flex items-center justify-between px-4 flex-shrink-0">
             <div className="flex-row items-center gap-2 text-[10px] font-mono text-muted">
               <Icon name="logs" size={10} />
-              <span>TERMINAL OUTPUT // STDOUT</span>
+              <span className="terminal-title">TERMINAL OUTPUT // STDOUT</span>
             </div>
             <div className="flex gap-1.5">
               <span className="w-2 h-2 rounded-full dot dot-danger"></span>

@@ -77,7 +77,7 @@ export async function reconcileChaiteConfigWithEngine (engine, chaite = {}) {
     if (JSON.stringify(configChannels) !== JSON.stringify(storedChannels)) {
       changed = true
       // 外部快照可能同时替换了 data/ch 文件；重新入队落盘当前内存版本。
-      for (const channel of storedChannels) await engine.saveChannel(channel)
+      for (const channel of storedChannels) await engine.saveChannel(channel, { force: true })
     }
     chaite.channels = storedChannels
   } else {
@@ -88,7 +88,7 @@ export async function reconcileChaiteConfigWithEngine (engine, chaite = {}) {
     if (JSON.stringify(configPresets) !== JSON.stringify(storedPresets)) {
       changed = true
       // 保证旧 config.json 触发恢复后，data/pr 也回写为面板当前版本。
-      for (const preset of storedPresets) await engine.savePreset(preset)
+      for (const preset of storedPresets) await engine.savePreset(preset, { force: true })
     }
     chaite.presets = storedPresets
   } else {
@@ -108,13 +108,21 @@ export async function reconcileChaiteConfigWithEngine (engine, chaite = {}) {
  * @param {Function} [opts.onReload] - 配置就地更新后执行；可返回 Promise
  * @param {number} [opts.debounceMs]
  */
-export function createConfigReloader ({ configPath, defaults, target, logger = () => {}, onReload = null, debounceMs = 500 }) {
+export function createConfigReloader ({ configPath, defaults, target, logger = () => {}, onReload = null, onStaleReject = null, debounceMs = 500 }) {
   let lastContent = null
+  let lastStamp = 0
   let watcher = null
   let timer = null
 
+  const stampOf = (raw) => {
+    try { return Number(JSON.parse(raw)?._savedAt) || 0 } catch { return 0 }
+  }
+
   /** 进程内写配置后调用，把基线对齐到自己的写入，避免误判为外部变更 */
-  const markWritten = (content) => { lastContent = content }
+  const markWritten = (content) => {
+    lastContent = content
+    lastStamp = stampOf(content) || lastStamp
+  }
 
   /** 立即从磁盘重载一次；内容无变化或解析失败则跳过。返回是否应用了变更 */
   const reload = async () => {
@@ -135,6 +143,20 @@ export function createConfigReloader ({ configPath, defaults, target, logger = (
       return false
     }
 
+    // 过期快照回写拒绝：时间戳比本进程已知的旧，说明是某条异常路径写回了历史版本，
+    // 吸收它会丢掉期间保存的内容（如面板新增的 MCP 服务器）。手改文件保留当前时间戳，不受影响。
+    const stamp = Number(parsed._savedAt) || 0
+    if (lastStamp > 0 && stamp === 0) {
+      logger(`config.json 出现无版本回写（当前 _savedAt ${lastStamp}），已忽略；手工编辑请保留 _savedAt`)
+      await onStaleReject?.()
+      return false
+    }
+    if (stamp > 0 && lastStamp > 0 && stamp < lastStamp) {
+      logger(`config.json 出现过期回写（_savedAt ${stamp} < ${lastStamp}），已忽略`)
+      await onStaleReject?.()
+      return false
+    }
+
     const candidate = mergeDefaults(defaults, parsed)
     try {
       validateConfigShape(candidate, defaults)
@@ -144,6 +166,7 @@ export function createConfigReloader ({ configPath, defaults, target, logger = (
     }
 
     lastContent = raw
+    if (stamp > 0) lastStamp = Math.max(lastStamp, stamp)
     replaceInPlace(target, candidate)
     await onReload?.(target)
     logger('config.json 外部变更已热加载')
@@ -154,6 +177,7 @@ export function createConfigReloader ({ configPath, defaults, target, logger = (
   const start = () => {
     if (watcher) return
     try { lastContent = fs.readFileSync(configPath, 'utf8') } catch { lastContent = null }
+    lastStamp = lastContent ? stampOf(lastContent) : 0
     watcher = chokidar.watch(configPath, { persistent: true, ignoreInitial: true })
     const onEvent = () => {
       clearTimeout(timer)

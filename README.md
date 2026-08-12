@@ -29,7 +29,7 @@ $ system.scan loli-plugin
 > 记忆系统 .............. ONLINE   # SQLite 消息暂存 · 身份账本 · 群风格 · 用户印象
 > Web 管理面板 .......... ONLINE   # 随 Yunzai 启动，零额外服务
 > 工具运行时 ............ ONLINE   # 本地热加载 · MCP · Agent Skills
-> 代码沙盒 .............. STANDBY  # Microsandbox microVM，默认仅主人
+> 代码沙盒 .............. STANDBY  # Quicksand microVM，默认仅主人
 > 表情库 / 轻互动 ....... ONLINE   # 视觉分类 · 表情回应 · 戳一戳
 ```
 
@@ -45,29 +45,39 @@ $ system.scan loli-plugin
 
 | 模块 | 能力 |
 |------|------|
-| ⌬ AI 对话 | Gemini / OpenAI 多渠道接入，工具调用循环，AI 自主判断消息分段 |
+| ⌬ AI 对话 | Google AI Studio、Gemini 兼容网关、GCIL、Antigravity、OpenAI 兼容接口，多渠道工具调用循环 |
 | ⌬ 伪人模式 | @ / 前缀 / 关键词 / 主动触发，会话复用与冷却 |
 | ⌬ 记忆系统 | SQLite 消息暂存 + QQ 身份账本 + AI 群风格 + 按 QQ 的用户印象 |
 | ⌬ 表情库 | 收藏表情自动收录，视觉模型分类意图，AI 按语境自主选择发送 |
 | ⌬ 轻互动 | QQ 系统表情回应、戳一戳回戳，带概率 / 冷却 / 每日上限 |
 | ⌬ 群管理 | 禁言、撤回、改名、两阶段确认踢人，受限自治处罚 |
-| ⌬ QQ 音乐 | 账户状态、VIP 检测、Cookie 自动刷新，AI 可搜索并发送音乐 |
+| ⌬ 音乐 | AI 搜索网易云 / 酷狗 / 酷我歌曲并发送音乐卡片，VIP 歌洛雪解析兜底（均可自部署） |
 | ⌬ Web 面板 | 总览 / 对话调试 / 渠道 / 预设 / 工具 / 记忆 / 配置 / 日志 |
 | ⌬ MCP & Skills | 接入 stdio / streamable-http MCP 服务，渐进加载 SKILL.md |
-| ⌬ 代码沙盒 | microVM 执行六种语言 + 无头浏览器，QQ 文件进出沙盒 |
+| ⌬ 代码沙盒 | Quicksand microVM 隔离执行 Python / JavaScript / Bash，QQ 文件进出沙盒 |
 | ⌬ Dokobot | 可选复用本机浏览器登录态做搜索与网页读取 |
 
 ## ◈ 部署序列
 
+要求：Node.js `>=22`、已安装并能正常启动的 Miao-Yunzai / TRSS-Yunzai，以及 `pnpm`。Node.js 22 是必需版本，因为引擎使用内置 `node:sqlite` 保存会话历史。
+
 ```bash
-$ cd /path/to/Miao-Yunzai/plugins
-$ git clone https://github.com/gaoao-3/loli-plugin.git
-$ cd loli-plugin && pnpm install
-$ node ../app.js        # 启动 / 重启 Yunzai
+$ cd /path/to/Miao-Yunzai
+$ git clone https://github.com/gaoao-3/loli-plugin.git plugins/loli-plugin
+$ pnpm install
+$ node app.js           # 启动 / 重启 Yunzai
 ```
 
 > icqq 由宿主或 ICQQ-Plugin 提供，本插件不重复安装客户端。
-> 引擎与面板位于 `core/`，`#loli更新` 会一并更新。
+> 引擎与面板位于 `core/`，`#loli更新` 会一并同步插件依赖；首次运行会自动生成 `data/config.json`。
+
+更新已有安装：
+
+```bash
+$ cd /path/to/Miao-Yunzai/plugins/loli-plugin
+$ git pull --ff-only
+$ pnpm install
+```
 
 **`// STEP.1 — 注入 API Key`**（编辑 `data/config.json`，或直接在面板配置）：
 
@@ -77,9 +87,15 @@ $ node ../app.js        # 启动 / 重启 Yunzai
     "channels": [
       {
         "id": "gemini",
-        "adapterType": "gemini",
+        "name": "Google AI Studio",
+        "adapterType": "aistudio",
         "models": ["gemini-2.5-flash", "gemini-2.5-pro"],
-        "options": { "apiKey": "你的 API Key", "safetyLevel": "balanced" },
+        "options": {
+          "apiKey": "你的 Google AI Studio API Key",
+          "apiMode": "generateContent",
+          "builtinTools": [],
+          "safetyLevel": "balanced"
+        },
         "status": "enabled"
       }
     ]
@@ -87,7 +103,35 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 }
 ```
 
-`safetyLevel`：`default` / `off` / `permissive` / `balanced` / `strict`，同时作用于聊天与记忆提炼，覆盖骚扰、仇恨、露骨、危险四类可调过滤器（Gemini 核心安全保护不受影响）。
+`safetyLevel`：`default` / `off` / `permissive` / `balanced` / `strict`，用于 Gemini `generateContent` 请求及复用该渠道的记忆 / 视觉处理，覆盖骚扰、仇恨、露骨、危险四类可调过滤器（Gemini 核心安全保护不受影响）。选择 `interactions` 协议时由服务端使用模型默认安全策略。
+
+### 渠道与 Gemini 请求协议
+
+| `adapterType` | 用途 | 凭证 / 备注 |
+|---|---|---|
+| `aistudio` | Google AI Studio 官方 Gemini API | API Key；支持 `generateContent` 与 `interactions` |
+| `gemini` | Gemini 兼容网关（例如自建或第三方 CPA） | API Key + `baseUrl`；默认走 `generateContent` |
+| `gcil` | Gemini CLI OAuth / Code Assist 直连 | 在面板导入 OAuth 账号；使用 GCIL 的 `v1internal:generateContent`，不等同于官方 Interactions |
+| `antigravity` | Antigravity OAuth 渠道 | 在面板完成 OAuth 登录与账号管理 |
+| `openai` | OpenAI 兼容接口 | API Key + `baseUrl`；GLM 等兼容接口也按此适配器保存 |
+
+GCIL 与 Antigravity 的 OAuth 客户端凭据不随仓库分发。首次使用前，请向对应 OAuth 客户端配置环境变量；账号的 refresh token 会由插件加密保存到 `data/oauth/`，不会写入 Git：
+
+```powershell
+$env:LOLI_GCIL_CLIENT_ID = '你的 GCIL OAuth client ID'
+$env:LOLI_GCIL_CLIENT_SECRET = '你的 GCIL OAuth client secret'
+$env:LOLI_ANTIGRAVITY_CLIENT_ID = '你的 Antigravity OAuth client ID'
+$env:LOLI_ANTIGRAVITY_CLIENT_SECRET = '你的 Antigravity OAuth client secret'
+```
+
+只使用 API Key 渠道时无需设置这些变量；未配置时，面板会明确提示 OAuth 客户端凭据缺失。
+
+Gemini 渠道的 `options.apiMode` 可填：
+
+- `generateContent`（默认）— 无状态兼容请求，适合第三方 Gemini 网关。
+- `interactions` — 使用 Google Interactions 的服务端会话与 `previous_interaction_id`，减少多轮历史重传；`interactionsFallback: true` 时，端点不兼容会自动回退到 `generateContent`。
+
+`builtinTools` 支持 `google_search`、`code_execution`、`google_maps`、`url_context`。它们是模型服务端工具，与插件本地工具不同，是否可用仍取决于渠道、模型和服务端权限。Google API Key 支持配置多个项目密钥，面板可设置轮询 / 最少在途请求策略，并在配额错误后按项目冷却。
 
 **`// STEP.2 — 唤醒伪人模式`**（默认关闭；面板「配置」页或 `data/config.json`）：
 
@@ -113,8 +157,9 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 |------|------|
 | `#ai <内容>` | 触发 AI 对话（需配置触发前缀） |
 | `#loli帮助` / `#loli状态` | 帮助信息 / 运行状态 |
-| `#我的印象` | 查看 AI 为自己维护的用户印象（合并转发展示） |
-| `#用户印象 <QQ>` | 查看指定 QQ 印象（主人） |
+| `#我的印象` / `#我的记忆` | 查看 AI 为自己维护的用户印象（合并转发展示） |
+| `#个人印象 @群友` | 按 @ 的真实 QQ 查看本群用户印象 |
+| `#用户印象 <QQ>` / `#群友记忆 <QQ>` | 按 QQ 号查看本群用户印象 |
 | `#立即更新我的印象` | 立即审查自己的近期消息（主人） |
 | `#记忆诊断` | 消息采集、群风格与印象状态（主人） |
 | `#群风格` / `#群学习状态` | 查看群风格与版本 |
@@ -122,16 +167,20 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 | `#群风格回滚 <版本>` | 恢复指定版本并生成新版本（主人） |
 | `#我的身份` / `#身份查询 <QQ>` | QQ 身份账本与可信历史名称（后者主人限定） |
 | `#表情库` / `#收录表情 <标签>` | 查看 / 补充表情语义标签 |
-| `#表情意图` `#表情风险` `#自动发送表情` `#解锁表情` `#重新识别表情` | 修正或交还表情元数据（主人） |
-| `#QQ音乐状态` `#刷新QQ音乐` `#QQ音乐vip检测` | QQ 音乐账户管理（主人） |
-| `#QQ音乐cookie <Cookie>` | 私聊导入 Cookie（主人，严禁群聊发送） |
+| `#测试表情 <ID>` | 测试发送指定表情（主人） |
+| `#停用表情 <ID>` / `#删除表情 <ID>` | 停用或删除指定表情（主人） |
+| `#自动收录表情 开启 / 关闭` | 开关主人表情自动收录（主人） |
+| `#表情意图 <ID> <意图...>` / `#表情风险 <ID> <等级>` | 修正表情元数据（主人） |
+| `#自动发送表情 <ID> 开启 / 关闭` | 开关指定表情自动发送（主人） |
+| `#解锁表情 <ID>` / `#重新识别表情 <ID>` | 解除元数据锁定或强制视觉重识别（主人） |
+| `确认踢人 <8位确认码>` / `取消踢人 <8位确认码>` | 处理群管理工具创建的待确认踢人请求（主人 / 群主 / 管理员） |
 | `#loli更新` / `#loli强制更新` | 从 GitHub 拉取更新 |
 
 群聊中 @ 机器人或按配置的触发方式同样可以唤起对话。
 
 ## ◈ 控制台 · Web 面板
 
-面板随 Yunzai 启动，默认接入 `http://localhost:3000`，无需单独起服务。
+面板随 Yunzai 启动，默认访问 `http://127.0.0.1:3000/dashboard/`，无需单独起服务；根路径 `/` 会自动跳转到面板。
 
 | 页面 | 功能 |
 |------|------|
@@ -142,17 +191,17 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 | 记忆 | 记忆实体与关系统计 |
 | 配置 | 触发方式、分段、会话、记忆、沙盒等参数 |
 | 日志 | 运行日志与模型响应摘要 |
-| MCP 与 Skills | 管理 MCP 服务连接与本地 Skills |
+| MCP 与 Agent Skills | 管理 MCP 服务连接、本地 Skills 与重新加载 |
 
 ```jsonc
 {
-  "dashboard": { "enable": true, "port": 3000, "host": "0.0.0.0", "authToken": "随机长字符串" }
+  "dashboard": { "enable": true, "port": 3000, "host": "127.0.0.1", "authToken": "随机长字符串" }
 }
 ```
 
-⚠ `authToken` 为空时不校验身份；默认监听 `0.0.0.0`，公网暴露前务必设置令牌并在外层加 HTTPS。
+⚠ 新安装默认 `authToken` 为空且监听 `0.0.0.0`。首次启动前请至少设置随机长令牌；只在本机使用时把 `host` 改为 `127.0.0.1`，需要局域网访问时再保留 `0.0.0.0` 并配合防火墙 / HTTPS。面板配置和渠道接口包含 API Key、OAuth 状态等敏感信息，不能把空令牌面板暴露到公网。
 
-`data/config.json` 支持热加载：手改文件约 0.5 秒内生效，无需重启（已打开的面板页面需手动刷新）。
+`data/config.json` 支持热加载：手改文件约 0.5 秒内生效，无需重启（已打开的面板页面需手动刷新）。渠道与预设运行时以 `data/ch/`、`data/pr/` 为持久化事实来源，配置文件会与它们保持镜像；优先使用面板编辑渠道和预设。
 
 ## ◈ 记忆核心
 
@@ -170,9 +219,13 @@ $ node ../app.js        # 启动 / 重启 Yunzai
 4. **AI 用户印象** — 直接审查每个 QQ 的原始消息，用带证据的增改删操作维护偏好与长期事实，不经过每日摘要或画像管线。
 5. **对话侧载** — 紧凑群风格 + 仅当前发言 QQ 的印象；群聊历史按 `loli.contextLength` 合并为单一时间轴（正文、QQ、消息 ID、媒体、引用）。
 
+旁路语义召回：用户印象可使用 Gemini Embedding 为相关长期事实排序后再注入对话；Embedding 不会替代 QQ 级身份隔离。
+
 默认门槛：群风格首次 100 条消息 / 5 位成员，之后每 50 条复审；用户印象首次 12 条，之后每 8 条复审。命令、纯表情、疑似注入不参与学习。后台审查不阻塞回复。
 
-模型会话历史单独保存在 `data/history.sqlite`，`llm.historyRetentionDays` 默认 30 天，启动时及每 6 小时自动清理，`0` 关闭。
+模型会话历史单独保存在 `data/history.sqlite`，`llm.historyRetentionDays` 默认 30 天，启动时及每 6 小时自动清理，`0` 关闭。历史消息超过 `llm.historyCompress.triggerMessages`（默认 60 条）后，会保留最近 20 条并后台生成滚动摘要，避免长期对话无限增长。
+
+多模态输入默认会压缩过大的当前图片；群聊历史图片最多补充最近 5 张、仅读取 5 分钟内的资源。图片、思考链和超长工具结果在写入历史时会做瘦身，工具当轮仍可看到完整结果。
 
 ## ◈ 表情库协议
 
@@ -208,23 +261,61 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 # 3. 面板「模型与媒体」启用并点击「检查 CLI / Bridge」
 ```
 
-安全建议：保持 `masterOnly: true`，用 `allowedDomains` 限制域名，`allowPrivateNetwork` 保持关闭。插件不自动安装扩展，未安装时原搜索 / 读取链路不受影响。
+可用工具包括 `dokobot_search`、`dokobot_read`、`dokobot_screenshot`、`dokobot_download_images` 与 `dokobot_close_session`；截图、下载图片、关闭会话仅主人可用。安全建议：保持 `masterOnly: true`，用 `allowedDomains` 限制域名，`allowPrivateNetwork` 保持关闭。插件不自动安装扩展，未安装时原搜索 / 读取链路不受影响。
 
 ## ◈ MCP × Agent Skills
 
+- **本地工具** — `utils/tools/` 下的工具支持热加载，可在面板中查看、启停和上传；普通动作工具按自身权限工作，不会因为 Skill 未激活而消失。
 - **MCP** — 支持本地 `stdio` 与远程 `streamable-http`，远程工具映射为 `mcp__服务ID__工具名` 接入工具循环；每个服务可配 `masterOnly` 与 `allowedTools`，单服务失败不影响本地工具。
-- **Skills** — 从插件根目录 `skills/` 扫描，启动时只向模型展示 `name` / `description`，调用 `activate_skill` 后读取完整 `SKILL.md`；`read_skill_resource` 仅允许 Skill 目录内的安全文本。
-- 仓库内置适配 Dokobot 官方五个 Skill（`dokobot`、`doko-search`、`doko-research`、`doko-translate`、`doko-summarize`），Bash / CLI 示例在运行时映射到插件工具；截图、下载、关闭会话始终仅主人可用。
+- **Skills** — 参考 Gemini 官方逻辑：模型先看到复杂 Skill 的 `name` / `description`，需要时自主调用 `activate_skill` 渐进加载工作流；Skill 不解锁 Tool，群管理、点歌、网页操作等能力始终由 Tool 自身配置和服务端权限控制。
+- 仓库内置适配 Dokobot 的 Skills（`dokobot`、`doko-search`、`doko-research`、`doko-translate`、`doko-summarize`），运行时会映射到插件工具，不会直接执行 Skill 文档里的原始 Bash / CLI 示例；截图、下载、关闭会话始终仅主人可用。
+
+MCP 示例（面板支持结构化编辑，也可直接写入 `data/config.json`）：
+
+```jsonc
+{
+  "mcp": {
+    "enable": true,
+    "servers": [
+      {
+        "id": "my-server",
+        "name": "我的 MCP 服务",
+        "transport": "streamable-http",
+        "url": "http://127.0.0.1:8787/mcp",
+        "headers": {},
+        "masterOnly": true,
+        "allowedTools": []
+      }
+    ]
+  },
+  "skills": {
+    "enable": true,
+    "masterOnly": false,
+    "directories": ["skills"]
+  }
+}
+```
+
+MCP 的 `stdio` 服务把 `transport` 改为 `stdio` 并填写 `command` / `args`；远程服务建议同时配置 `allowedTools` 与 `masterOnly`。
 
 ## ◈ 代码沙盒
 
-基于 [Microsandbox](https://github.com/microsandbox/microsandbox) microVM（Windows Hypervisor Platform，无需 Docker Desktop）。`npx msb doctor` 检查虚拟化条件。
+代码任务统一使用 [Microsoft Quicksand](https://github.com/microsoft/quicksand) microVM，通过 Windows Hypervisor Platform 运行，无需 Docker Desktop。网页搜索与读取由 Dokobot Skills 负责；沙盒本身不提供浏览器自动化。
 
-- `run_code` — python / javascript / typescript / java / go / bash，stdout、stderr、返回值交给 AI 转述。
-- `browser_use` — microVM 内无头 Chromium，动作列表式操作；网络强制仅公网，阻断宿主机、localhost、云元数据与局域网。
-- 每次调用后沙盒即销毁，碰不到本机文件与凭据；`microsandboxNetwork: false` 可完全断网；默认仅主人可用。
-- `pythonDependencies` 声明 PyPI 依赖，首次运行自动构建内容寻址快照，后续调用直接复用。
-- **QQ 文件进出沙盒**（`sandbox.mediaIO`，默认开）— 当前 / 引用 / 群历史资源自动进入 `inputs/`（≤4 个，单个 ≤20MB，合计 ≤40MB）；`resource_filter` 按来源、发送者、消息 ID、媒体序号精确定位；产物写入 `outputs/` 自动回发，普通文件走群文件 / 离线文件。
+- `run_code` — python / javascript / bash，stdout、stderr、返回值交给 AI 转述。
+- `fetch_resource` — 宿主侧受控公网 GET/HEAD；逐跳校验 DNS 与重定向，下载结果仅暂存给下一次 `run_code`。
+- `run_code.network` — 模型可在一次工具调用中决定是否申请预取公开 URL；策略通过后再启动断网沙盒。
+- 每次调用后沙盒即销毁，碰不到本机文件与凭据；默认断网，也可由模型申请受控预取或主人专用 FULL 网络。
+- 默认预装 `Pillow==12.3.0`，图片与 GIF 处理无需在每个临时 microVM 内重复安装。
+- **QQ 文件进出沙盒**（`sandbox.mediaIO`，默认开）— 当前 / 引用 / 群历史资源自动进入 `inputs/`（≤4 个，单个 ≤20MB，合计 ≤40MB）；`resource_filter` 按来源、发送者、消息 ID、媒体序号精确定位；产物写入 `outputs/` 后分块落入宿主临时目录并自动回发，普通文件走群文件 / 离线文件，上传结束立即删除临时文件。
+
+启用前请准备 Windows Hypervisor Platform、Quicksand 保存镜像，以及一个安装了 Quicksand Python SDK 的独立 Python 环境。默认路径是 `D:\quicksand-runtime\.venv\Scripts\python.exe`，可用下面的命令先检查 SDK 是否可导入：
+
+```powershell
+D:\quicksand-runtime\.venv\Scripts\python.exe -c "import quicksand; print('quicksand: ok')"
+```
+
+`quicksandImages` 中的镜像名必须与本机已保存的 Quicksand 镜像一致；沙盒默认关闭，且默认仅主人可用。
 
 <details>
 <summary><b>▸ CONFIG::SANDBOX</b> — 核心配置表（面板可改，即时生效）</summary>
@@ -234,46 +325,69 @@ $ npm install -g @dokobot/cli        # 1. 安装 CLI
 | `enable` | `false` | 总开关 |
 | `masterOnly` | `true` | 仅主人可用 |
 | `mediaIO` | `true` | QQ 媒体进沙盒与产物回发 |
-| `browserEnable` | `true` | 启用 `browser_use` |
-| `microsandboxImage` | `python:3.14-slim` | Python OCI 镜像 |
-| `microsandboxMemoryMiB` / `microsandboxCpus` | `512` / `1` | 代码 microVM 资源 |
-| `browserMemoryMiB` / `browserCpus` | `1024` / `2` | 浏览器 microVM 资源 |
+| `quicksandPython` | `D:\quicksand-runtime\.venv\Scripts\python.exe` | Quicksand 独立 Python，必须位于纯英文路径 |
+| `quicksandImage` | `loli-python-media` | Quicksand Python 媒体镜像（Pillow + ffmpeg） |
+| `quicksandImages.javascript` | `loli-code` | Quicksand JavaScript 镜像（Node.js） |
+| `quicksandWorkspace` | `D:\quicksand-runtime\workspace` | Quicksand 保存镜像目录 |
+| `quicksandMemoryMiB` / `quicksandCpus` | `512` / `1` | Quicksand 资源；Windows WHPX 媒体镜像固定 1 vCPU |
+| `artifactMaxBytesMiB` | `200` | `outputs/` 单个产物最大回传体积，最大 512 MiB |
+| `fetchEnable` | `false` | 启用受控公网下载；该工具始终仅主人可用 |
+| `fetchAllowedDomains` | `[]` | 下载域名白名单；空数组表示任意公网域名 |
+| `fetchAllowProxyFakeIp` | `false` | 仅对白名单域名兼容本机代理的 `198.18/15` Fake-IP |
+| `fetchMaxBytesMiB` / `fetchTimeoutSeconds` | `20` / `30` | 单文件上限与下载超时 |
+| `fullNetworkEnable` | `false` | 允许 AI 在主人请求中申请 FULL 原始网络；可能访问宿主机和局域网 |
+| `fullNetworkTimeoutSeconds` | `60` | FULL 原始联网任务的执行时限 |
 | `sandboxTimeoutSeconds` | `300` | microVM 最长存活 |
 | `requestTimeoutSeconds` | `120` | 单次执行超时 |
 
 </details>
 
-首次调用浏览器工具会下载固定版本 Playwright 镜像，耗时与磁盘占用明显高于后续调用。
-
 ## ◈ 源码拓扑
 
 ```text
 loli-plugin/
-├── apps/             # 消息处理模块（对话、帮助、记忆、表情、音乐、更新）
+├── apps/             # 消息处理模块（对话、帮助、记忆、表情、轻互动、更新）
 ├── config/           # 默认配置（首启生成 data/config.json）
-├── core/             # 内置 AI 引擎、REST API 与面板静态资源
-│   ├── src/
+├── core/             # 内置 AI 引擎、渠道适配器、REST API 与面板静态资源
+│   ├── src/clients/  # Gemini / OpenAI / GCIL / Antigravity 适配器
+│   ├── src/dashboard/
 │   └── dashboard/    # 已构建面板（dashboard-src 产物）
 ├── dashboard-src/    # 面板源码（React + Vite）
 ├── memory/           # SQLite 存储、身份账本、群风格、用户印象、调度
-├── utils/            # 工具函数与本地 AI 工具
-│   └── tools/
+├── utils/            # 工具函数、MCP / Skills、Quicksand Bridge
+│   └── tools/         # 本地 AI 工具（支持热加载）
 ├── skills/           # Agent Skills（SKILL.md）
-├── data/             # 运行时数据（配置、SQLite、表情资源）
+├── data/             # 运行时数据（配置、渠道、预设、SQLite、表情资源）
 ├── test/             # node:test 测试
 └── index.js          # 插件入口
 ```
 
+## ◈ 安全边界
+
+- 管理面板包含渠道配置和密钥相关接口；`dashboard.authToken` 为空时不鉴权。推荐本机监听 `127.0.0.1`，若监听 `0.0.0.0`，必须设置强令牌、限制防火墙范围并在反向代理层启用 HTTPS。
+- `sandbox`、`fetch_resource`、Dokobot 的浏览器操作默认关闭或仅主人可用；开启联网能力前请确认模型提示词注入风险与域名白名单。当前 `dokobot_read` 的 direct-fetch 回退链路仍应只对可信用户开放，直到 URL、DNS、重定向和响应体大小校验补齐。
+- `#个人印象` / `#用户印象` 当前允许群成员按 QQ 查看本群用户印象；不要把它当作私密资料展示，若记忆内容敏感应先收紧指令权限。
+- 群管理工具不能接受群友指令处罚第三人；自治处罚只针对当前消息发送者，并排除主人、群主和管理员。踢人必须经过群内授权人员的二次确认。
+- `#loli强制更新` 会覆盖本地插件文件，仅在确认没有需要保留的本地改动时使用。
+
+## ◈ 开发与验证
+
 ```bash
-$ pnpm test                              # node --test test/*.test.js
-$ cd dashboard-src && npm run build      # 重建面板至 core/dashboard
+$ pnpm test                                  # node --test test/*.test.js
+$ cd dashboard-src
+$ npm ci
+$ npm run build                              # 重建面板至 core/dashboard
 ```
+
+面板构建输出到 `core/dashboard/`，插件运行时直接提供该目录，不需要额外启动前端开发服务器。修改配置、工具或 Skills 后，优先通过 `#loli状态`、`#loli帮助` 和面板「扩展」页检查运行态。
+
+维护者审查时还应确认：`node --check` 通过、`utils/quicksand-bridge.py` 可被 Python 解析、`/api/health` 返回 `status: ok`，以及源码中没有已删除后端或工具的残留引用。Quicksand 是当前代码执行的唯一后端；没有 Docker、浏览器沙盒或兼容回退。
 
 <img src="assets/divider.svg" width="100%" alt="divider"/>
 
 <div align="center">
 
-**[ MIT LICENSE ](LICENSE) © gaoao-3**
+**MIT LICENSE © gaoao-3**
 
 `// EOF — 萝莉妈妈持续在线，等待你的下一条消息`
 

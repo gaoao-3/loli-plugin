@@ -7,9 +7,10 @@ const DEFAULT_SEGMENTED_REPLY = {
   delayMax: 1200
 }
 
-export const REPLY_SPLIT_MARKER = '<|split|>'
-const replySplitPattern = /\s*<\|split\|>\s*/gi
-const hasReplySplitMarker = text => /<\|split\|>/i.test(text)
+// 避免使用 <|...|>：它形似模型内部特殊 token，部分模型会改写或补出异常字符。
+export const REPLY_SPLIT_MARKER = '[消息分段]'
+const replySplitPattern = /\s*\[消息分段\]\s*/giu
+const hasReplySplitMarker = text => /\[消息分段\]/iu.test(text)
 
 const graphemeSegmenter = typeof Intl?.Segmenter === 'function'
   ? new Intl.Segmenter('zh-CN', { granularity: 'grapheme' })

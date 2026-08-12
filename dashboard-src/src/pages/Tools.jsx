@@ -83,7 +83,7 @@ export default function Tools({ tools, refresh, showToast, runTask }) {
   return (
     <div className="pane-content select-text">
       <div className="tool-page-header flex-row justify-between items-center mb-4">
-        <h2 className="text-lg font-bold text-strong">// 工具扩展插件</h2>
+        <h2 className="page-hero-title">工具扩展插件</h2>
         <div className="tool-page-header-actions flex-row gap-2">
           <button className="btn btn-secondary" onClick={reloadTools}>
             <Icon name="refresh" size={12} />重新加载
@@ -128,7 +128,7 @@ export default function Tools({ tools, refresh, showToast, runTask }) {
       </div>
 
       {/* Upload Modal */}
-      <Modal open={modalVisible} onClose={() => setModalVisible(false)} maxWidth={450}>
+      <Modal open={modalVisible} onClose={() => setModalVisible(false)} maxWidth={450} cardClass="tools-modal">
             <div className="modal-header">
               <span className="modal-title">导入自定义扩展 (.js)</span>
               <button className="modal-close" onClick={() => setModalVisible(false)}>×</button>
@@ -163,7 +163,7 @@ export default function Tools({ tools, refresh, showToast, runTask }) {
       </Modal>
 
       {/* Source Modal */}
-      <Modal open={Boolean(viewingTool)} onClose={() => setViewingTool(null)} maxWidth={900}>
+      <Modal open={Boolean(viewingTool)} onClose={() => setViewingTool(null)} maxWidth={900} cardClass="tools-modal">
         <div className="modal-header">
           <span className="modal-title">
             查看工具源码 // {viewingTool?.name}.js
@@ -181,7 +181,7 @@ export default function Tools({ tools, refresh, showToast, runTask }) {
       </Modal>
 
       {/* Delete Modal */}
-      <Modal open={Boolean(deletingTool)} onClose={() => setDeletingTool(null)} maxWidth={450}>
+      <Modal open={Boolean(deletingTool)} onClose={() => setDeletingTool(null)} maxWidth={450} cardClass="tools-modal">
         <div className="modal-header">
           <span className="modal-title">删除工具</span>
           <button className="modal-close" onClick={() => setDeletingTool(null)}>×</button>

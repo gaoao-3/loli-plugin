@@ -6,6 +6,7 @@
  */
 import path from 'path'
 import fs from 'fs'
+import { isDeepStrictEqual } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { createEngine } from '../core/index.js'
 import defaultConfig from '../config/config.js'
@@ -19,7 +20,7 @@ import {
 } from './config-watcher.js'
 import { McpManager } from './mcp-manager.js'
 import { SkillManager } from './skill-manager.js'
-import { loadConfigFile, saveConfigFile } from './config-storage.js'
+import { loadConfigFile, mergeConcurrentConfig, saveConfigFile } from './config-storage.js'
 import { validateConfigShape } from '../core/src/dashboard/config-validation.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -32,6 +33,10 @@ export { PLUGIN_ROOT, DATA_DIR, TOOLS_DIR }
 
 let engine = null
 let config = null
+// Last version this module instance is known to have loaded or committed.  A
+// separate ESM instance can coexist in Yunzai after plugin URL hot imports; it
+// must not overwrite fields saved through the dashboard with its old snapshot.
+let persistedConfig = null
 let pluginLogger = null
 let mcpManager = null
 let skillManager = null
@@ -76,18 +81,46 @@ function startHistoryCleanup () {
 const logBuffer = []
 const MAX_LOGS = 500
 
+function formatLogArg (a) {
+  if (typeof a === 'string') return a
+  // Error 实例 JSON.stringify 会得到 {}，必须单独取 stack/message
+  if (a instanceof Error) return a.stack || a.message
+  try {
+    return JSON.stringify(a)
+  } catch {
+    return String(a)
+  }
+}
+
 function pushLog (level, ...args) {
-  const line = `[${new Date().toLocaleString('zh-CN')}] [${level}] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}`
+  const line = `[${new Date().toLocaleString('zh-CN')}] [${level}] ${args.map(formatLogArg).join(' ')}`
   logBuffer.push(line)
   if (logBuffer.length > MAX_LOGS) logBuffer.shift()
+}
+
+// 劫持 console.warn/error：未经过 pluginLogger 的报错（含其他模块的 console.error）也进入面板日志
+if (!console.__loliPatched) {
+  const rawWarn = console.warn.bind(console)
+  const rawError = console.error.bind(console)
+  console.warn = (...args) => { rawWarn(...args); pushLog('WARN', ...args) }
+  console.error = (...args) => { rawError(...args); pushLog('ERROR', ...args) }
+  console.__loliPatched = true
+}
+
+// 未捕获异常 / 未处理的 Promise 拒绝也要留痕
+if (!process.__loliErrorHooks) {
+  process.on('uncaughtException', err => pushLog('ERROR', '未捕获异常:', err))
+  process.on('unhandledRejection', err => pushLog('ERROR', '未处理的 Promise 拒绝:', err))
+  process.__loliErrorHooks = true
 }
 
 function wrapLogger () {
   if (typeof logger === 'undefined') {
     return {
       info: (...args) => { console.log(...args); pushLog('INFO', ...args) },
-      warn: (...args) => { console.warn(...args); pushLog('WARN', ...args) },
-      error: (...args) => { console.error(...args); pushLog('ERROR', ...args) },
+      // console.warn/error 已被劫持入缓冲区，无需重复 pushLog
+      warn: (...args) => { console.warn(...args) },
+      error: (...args) => { console.error(...args) },
       debug: (...args) => { pushLog('DEBUG', ...args) }
     }
   }
@@ -106,21 +139,58 @@ function loadConfig () {
   })
   config = mergeDefaults(defaultConfig, loaded)
   validateConfigShape(config, defaultConfig)
+  persistedConfig = structuredClone(config)
   return config
 }
 
 /** @type {ReturnType<typeof createConfigReloader>|null} 配置热加载器（initPlugin 启动，destroyPlugin 停止） */
 let configReloader = null
 
-export const saveConfig = (nextConfig = config) => {
+/**
+ * 提交主配置。
+ * 用户配置默认滚动备份；可由独立存储/内存重建的镜像和自愈写入应关闭 backup，
+ * 避免额外 fsync，也避免把过期但合法的外部快照覆盖进已知良好备份。
+ */
+export const saveConfig = (nextConfig = config, { backup = true } = {}) => {
   if (!nextConfig || typeof nextConfig !== 'object' || Array.isArray(nextConfig)) {
     console.warn('[loli] saveConfig skipped: config is not loaded')
     return false
   }
   validateConfigShape(nextConfig, defaultConfig)
+  let candidate = structuredClone(nextConfig)
+  let disk = null
+  let diskRaw = null
+  let diskStale = false
+  try {
+    diskRaw = fs.readFileSync(CONFIG_PATH, 'utf8')
+    disk = mergeDefaults(defaultConfig, JSON.parse(diskRaw))
+    validateConfigShape(disk, defaultConfig)
+    // 磁盘版本的时间戳比本进程最后持久化的还旧（或本进程已盖戳而磁盘没有）= 过期回写，丢弃磁盘，用内存版本治愈
+    const diskStamp = Number(disk?._savedAt) || 0
+    const baseStamp = Number(persistedConfig?._savedAt) || 0
+    diskStale = baseStamp > 0 && diskStamp < baseStamp
+    if (persistedConfig && !diskStale) candidate = mergeConcurrentConfig(persistedConfig, candidate, disk)
+  } catch {
+    // saveConfigFile keeps the known-good backup if the current file is damaged.
+  }
+  // 候选内容与当前磁盘完全一致时直接提交内存基线；不滚动 _savedAt、主文件和备份。
+  if (disk && !diskStale && isDeepStrictEqual(candidate, disk)) {
+    replaceInPlace(config, candidate)
+    persistedConfig = structuredClone(candidate)
+    configReloader?.markWritten(diskRaw)
+    return config
+  }
+  // 严格单调保存时间戳：同毫秒连续保存或系统时钟回拨时仍必须前进。
+  const knownStamp = Math.max(
+    Number(persistedConfig?._savedAt) || 0,
+    Number(candidate?._savedAt) || 0
+  )
+  candidate._savedAt = Math.max(Date.now(), knownStamp + 1)
+  validateConfigShape(candidate, defaultConfig)
   // 先完成磁盘提交，再更新共享对象；写入失败时运行时配置保持原样。
-  const serialized = saveConfigFile(CONFIG_PATH, nextConfig)
-  if (nextConfig !== config) replaceInPlace(config, nextConfig)
+  const serialized = saveConfigFile(CONFIG_PATH, candidate, { backup })
+  replaceInPlace(config, candidate)
+  persistedConfig = structuredClone(candidate)
   // 对齐热加载基线，自己的写入不会被误判为外部变更
   configReloader?.markWritten(serialized)
   return config
@@ -166,7 +236,17 @@ export async function initPlugin () {
     defaults: defaultConfig,
     target: config,
     logger: (msg) => l.info(`[loli] ${msg}`),
+    // 过期回写（典型：编辑器挂着旧缓冲区盲写）只污染了磁盘，立刻用内存版本写回治愈，
+    // 免得撞上重启窗口把旧配置加载进来。saveConfig 自写会对齐基线，不会回环。
+    onStaleReject: async () => {
+      try {
+        saveConfig(config, { backup: false })
+      } catch (err) {
+        l.warn(`[loli] 过期回写后的磁盘自愈失败: ${err.message}`)
+      }
+    },
     onReload: async (reloadedConfig) => {
+      persistedConfig = structuredClone(reloadedConfig)
       if (!reloadedConfig.chaite) reloadedConfig.chaite = {}
       const restored = await reconcileChaiteConfigWithEngine(engine, reloadedConfig.chaite)
       if (!restored) return
@@ -179,7 +259,7 @@ export async function initPlugin () {
         return
       }
       l.warn('[loli] 检测到 config.json 中的渠道/预设落后，已保留面板持久化版本')
-      saveConfig()
+      saveConfig(reloadedConfig, { backup: false })
     }
   })
 
@@ -201,7 +281,7 @@ export async function initPlugin () {
 
   // 渠道/预设以 data/ch、data/pr 为持久化事实来源；存储为空时才从 config.json 迁移。
   if (!config.chaite) config.chaite = {}
-  if (await reconcileChaiteConfigWithEngine(engine, config.chaite)) saveConfig()
+  if (await reconcileChaiteConfigWithEngine(engine, config.chaite)) saveConfig(config, { backup: false })
   configReloader.start()
 
   // 重启后补处理已入库但尚未完成视觉标签的图片表情。

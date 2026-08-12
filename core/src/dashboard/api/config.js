@@ -30,10 +30,13 @@ export default function configRoutes (ctx) {
     mergeConfigPatch(candidate, req.body)
     try {
       // saveConfig(candidate) 必须先持久化再提交共享内存；抛错时保留旧运行时配置。
-      ctx.saveConfig(candidate)
-      if (JSON.stringify(ctx.config) !== JSON.stringify(candidate)) {
+      // saveConfig 可能返回已补充服务端字段（如 _savedAt）的共享对象。
+      // 仅兼容不负责提交内存的旧 saver；不能用请求 candidate 覆盖新版 saver 的结果。
+      const committed = ctx.saveConfig(candidate)
+      if (committed !== ctx.config) {
+        const source = committed && typeof committed === 'object' ? committed : candidate
         for (const key of Object.keys(ctx.config)) delete ctx.config[key]
-        Object.assign(ctx.config, candidate)
+        Object.assign(ctx.config, source)
       }
       res.set('ETag', configRevision(ctx.config))
       res.json({ ok: true, config: ctx.config })

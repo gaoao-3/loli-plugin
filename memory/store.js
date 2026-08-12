@@ -121,6 +121,21 @@ export function openMemoryStore (baseDir) {
     CREATE INDEX IF NOT EXISTS idx_group_member_memory_versions
       ON group_member_memory_versions (group_id, user_id, version DESC);
 
+    CREATE TABLE IF NOT EXISTS member_memory_embeddings (
+      group_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      memory_key TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimensions INTEGER NOT NULL,
+      vector BLOB NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(group_id, user_id, memory_key, model, dimensions)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_member_memory_embeddings_owner
+      ON member_memory_embeddings (group_id, user_id, model, dimensions);
+
     CREATE TABLE IF NOT EXISTS group_identities (
       group_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
@@ -617,6 +632,54 @@ export function listGroupMemberMemoryVersions (baseDir, groupId, userId, limit =
   `).all(String(groupId), String(userId), Math.max(1, Number(limit) || 10))
 }
 
+export function listMemberMemoryEmbeddings (baseDir, groupId, userId, model, dimensions) {
+  const rows = openMemoryStore(baseDir).prepare(`
+    SELECT memory_key AS memoryKey, content_hash AS contentHash, vector
+    FROM member_memory_embeddings
+    WHERE group_id = ? AND user_id = ? AND model = ? AND dimensions = ?
+  `).all(String(groupId), String(userId), String(model), Number(dimensions))
+  return new Map(rows.map(row => {
+    const bytes = Buffer.from(row.vector)
+    return [row.memoryKey, {
+      contentHash: row.contentHash,
+      vector: Array.from({ length: bytes.byteLength / 4 }, (_, index) => bytes.readFloatLE(index * 4))
+    }]
+  }))
+}
+
+export function upsertMemberMemoryEmbedding (baseDir, {
+  groupId, userId, memoryKey, contentHash, model, dimensions, vector
+}) {
+  const values = Float32Array.from(vector || [])
+  if (values.length !== Number(dimensions)) throw new Error(`Embedding 维度不匹配: ${values.length}/${dimensions}`)
+  const blob = Buffer.from(values.buffer, values.byteOffset, values.byteLength)
+  openMemoryStore(baseDir).prepare(`
+    INSERT INTO member_memory_embeddings (
+      group_id, user_id, memory_key, content_hash, model, dimensions, vector, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(group_id, user_id, memory_key, model, dimensions) DO UPDATE SET
+      content_hash = excluded.content_hash,
+      vector = excluded.vector,
+      updated_at = excluded.updated_at
+  `).run(String(groupId), String(userId), String(memoryKey), String(contentHash), String(model), Number(dimensions), blob, Date.now())
+}
+
+export function deleteStaleMemberMemoryEmbeddings (baseDir, groupId, userId, liveKeys, model, dimensions) {
+  const store = openMemoryStore(baseDir)
+  const keep = new Set((liveKeys || []).map(String))
+  const rows = store.prepare(`
+    SELECT memory_key AS memoryKey FROM member_memory_embeddings
+    WHERE group_id = ? AND user_id = ? AND model = ? AND dimensions = ?
+  `).all(String(groupId), String(userId), String(model), Number(dimensions))
+  const remove = rows.map(row => row.memoryKey).filter(key => !keep.has(key))
+  const statement = store.prepare(`
+    DELETE FROM member_memory_embeddings
+    WHERE group_id = ? AND user_id = ? AND memory_key = ? AND model = ? AND dimensions = ?
+  `)
+  for (const key of remove) statement.run(String(groupId), String(userId), key, String(model), Number(dimensions))
+  return remove.length
+}
+
 export function rollbackGroupMemberMemory (baseDir, groupId, userId, targetVersion) {
   const store = openMemoryStore(baseDir)
   const row = store.prepare(`
@@ -646,6 +709,7 @@ export function getStats (baseDir) {
   const learningVersions = store.prepare('SELECT COUNT(*) AS count FROM group_learning_versions').get().count
   const learnedMembers = store.prepare('SELECT COUNT(*) AS count FROM group_member_memory_state WHERE version > 0').get().count
   const memberMemoryVersions = store.prepare('SELECT COUNT(*) AS count FROM group_member_memory_versions').get().count
+  const embeddings = store.prepare('SELECT COUNT(*) AS count FROM member_memory_embeddings').get().count
   const runs = getSchedulerRuns(baseDir)
   return {
     enabled: true,
@@ -655,6 +719,7 @@ export function getStats (baseDir) {
     learningVersions,
     learnedMembers,
     memberMemoryVersions,
+    embeddings,
     runs,
     dbPath
   }

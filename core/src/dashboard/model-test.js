@@ -9,8 +9,8 @@ const MAX_REPLY_LENGTH = 120
  * 构造最小化对话测试请求。复用模型列表接口的 URL/鉴权推导，
  * 再把 /models 换成 generateContent 或 chat/completions。
  */
-export function buildModelTestRequest ({ adapterType, baseUrl, apiKey, model, safetyLevel } = {}) {
-  const actualAdapter = adapterType || 'openai'
+export function buildModelTestRequest ({ adapterType, baseUrl, apiKey, model, safetyLevel, apiMode } = {}) {
+  const actualAdapter = adapterType === 'aistudio' ? 'gemini' : (adapterType || 'openai')
   const target = String(model || '').trim().replace(/^models\//, '')
   if (!target) throw new Error('缺少要测试的模型')
   if (actualAdapter === 'gemini' && !apiKey) throw new Error('测试 Gemini 模型前请填写 API Key')
@@ -19,6 +19,27 @@ export function buildModelTestRequest ({ adapterType, baseUrl, apiKey, model, sa
   const headers = { ...base.headers, 'Content-Type': 'application/json' }
 
   if (actualAdapter === 'gemini') {
+    if (apiMode === 'interactions') {
+      const targetUrl = new URL(base.url)
+      targetUrl.pathname = targetUrl.pathname
+        .replace(/\/models\/?$/i, '')
+        .replace(/\/v1beta\/?$/i, '/v1beta2/interactions')
+      if (!/\/interactions$/i.test(targetUrl.pathname)) {
+        targetUrl.pathname = `${targetUrl.pathname.replace(/\/+$/, '')}/v1beta2/interactions`
+      }
+      return {
+        url: targetUrl.toString(),
+        headers,
+        body: {
+          model: target,
+          input: TEST_PROMPT,
+          store: false,
+          generation_config: { max_output_tokens: 16 }
+        },
+        adapterType: actualAdapter,
+        responseKind: 'interactions'
+      }
+    }
     const url = base.url.replace(/\/models$/i, `/models/${encodeURIComponent(target)}:generateContent`)
     const body = {
       contents: [{ role: 'user', parts: [{ text: TEST_PROMPT }] }],
@@ -26,7 +47,7 @@ export function buildModelTestRequest ({ adapterType, baseUrl, apiKey, model, sa
     }
     const safetySettings = resolveGeminiSafetySettings(safetyLevel)
     if (safetySettings) body.safetySettings = safetySettings
-    return { url, headers, body, adapterType: actualAdapter }
+    return { url, headers, body, adapterType: actualAdapter, responseKind: 'generateContent' }
   }
   if (actualAdapter === 'openai') {
     const url = base.url.replace(/\/models$/i, '/chat/completions')
@@ -46,9 +67,19 @@ function extractUpstreamError (payload) {
   return ''
 }
 
-function extractReply (payload, adapterType) {
+function extractReply (payload, adapterType, responseKind) {
   let text
-  if (adapterType === 'gemini') {
+  if (responseKind === 'interactions') {
+    text = payload?.output_text
+    if (!text) {
+      text = (payload?.steps || [])
+        .filter(step => step?.type === 'model_output')
+        .flatMap(step => step.content || [])
+        .filter(item => item?.type === 'text')
+        .map(item => item.text || '')
+        .join('')
+    }
+  } else if (adapterType === 'gemini') {
     const parts = payload?.candidates?.[0]?.content?.parts
     if (Array.isArray(parts)) text = parts.map(p => p?.text || '').join('')
   } else {
@@ -93,5 +124,5 @@ export async function testModel (input = {}, fetchImpl = globalThis.fetch) {
     throw new Error(`HTTP ${response.status}${reason ? `：${reason}` : ''}${detail ? `（${detail}）` : ''}`)
   }
 
-  return { ok: true, latencyMs, reply: extractReply(payload, request.adapterType) }
+  return { ok: true, latencyMs, reply: extractReply(payload, request.adapterType, request.responseKind) }
 }

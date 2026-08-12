@@ -11,6 +11,7 @@ import {
   setGroupMemberMemoryStatus
 } from './store.js'
 import { callMemoryAI } from './scheduler.js'
+import { rankMemberMemories, syncMemberMemoryEmbeddings } from './embedding.js'
 
 const runningMembers = new Set()
 const retryAfter = new Map()
@@ -84,6 +85,20 @@ export async function maybeReviewGroupMemberMemory ({
       changed: applied.changed
     })
     const cleanup = pruneProcessedMessages(baseDir)
+    if (saved.changed) {
+      try {
+        await syncMemberMemoryEmbeddings({
+          baseDir,
+          groupId: gid,
+          userId: uid,
+          memories: applied.memories,
+          config,
+          logger
+        })
+      } catch (error) {
+        logger?.warn?.(`[Embedding] 用户印象已保存，但向量更新失败: ${String(error?.message || error).slice(0, 200)}`)
+      }
+    }
     retryAfter.delete(key)
     logger?.info?.(
       `[MemberMemory] 群 ${gid} 用户 ${uid} 审查完成: 样本=${valid.length}, ` +
@@ -100,7 +115,7 @@ export async function maybeReviewGroupMemberMemory ({
   }
 }
 
-export function buildGroupMemberMemoryPrompt ({ baseDir, groupId, userId, config }) {
+export async function buildGroupMemberMemoryPrompt ({ baseDir, groupId, userId, queryText, config, logger = console }) {
   if (!baseDir || !groupId || !userId) return ''
   const settings = getMemberLearningSettings(config)
   if (!settings.enable) return ''
@@ -108,9 +123,18 @@ export function buildGroupMemberMemoryPrompt ({ baseDir, groupId, userId, config
   const styles = state.styles
     .filter(entry => Number(entry.confidence) >= settings.injectMinConfidence)
     .slice(0, settings.maxStyleEntries)
-  const memories = state.memories
+  const candidateMemories = state.memories
     .filter(entry => Number(entry.confidence) >= settings.injectMinConfidence)
     .slice(0, settings.maxMemoryEntries)
+  const memories = await rankMemberMemories({
+    baseDir,
+    groupId: String(groupId),
+    userId: String(userId),
+    queryText,
+    memories: candidateMemories,
+    config,
+    logger
+  })
   if (styles.length === 0 && memories.length === 0) return ''
 
   const sections = []
