@@ -122,6 +122,12 @@ export function isInteractionCompatibilityError (error) {
     .test(String(error?.message || ''))
 }
 
+export function isGeminiBuiltinToolPermissionError (error) {
+  const status = interactionErrorStatus(error)
+  if (status !== 403) return false
+  return /(?:builtin|built-in) tools|内置工具|permission_denied/i.test(String(error?.message || ''))
+}
+
 function normalizeThinkingLevel (options) {
   const requested = String(options.thinkingLevel || options.reasoningEffort || 'LOW').toLowerCase()
   if (requested === 'off') return 'minimal'
@@ -231,6 +237,7 @@ export class GeminiClient extends AbstractClient {
 
   #genAI
   #interactionStates = new Map()
+  #builtinToolsDisabled = false
 
   constructor (opts) {
     super(opts)
@@ -314,10 +321,20 @@ export class GeminiClient extends AbstractClient {
     if (!this.#genAI && !hasGeminiApiKey(this.options)) throw new Error('Gemini API key not configured')
 
     const apiMode = normalizeGeminiApiMode(options.apiMode ?? this.options.apiMode)
+    const requestedBuiltinTools = normalizeGeminiBuiltinTools(options.builtinTools ?? this.options.builtinTools)
+    const effectiveOptions = this.#builtinToolsDisabled && requestedBuiltinTools.length > 0
+      ? { ...options, builtinTools: [] }
+      : options
     if (apiMode === 'interactions') {
       try {
-        return await this.#sendInteractions(histories, options)
+        return await this.#sendInteractions(histories, effectiveOptions)
       } catch (error) {
+        if (requestedBuiltinTools.length > 0 && isGeminiBuiltinToolPermissionError(error)) {
+          this.#builtinToolsDisabled = true
+          await this.#clearInteractionState(String(options.conversationId || 'global'))
+          this.logger?.('[Gemini] API key has builtin tools disabled; retrying this conversation with local function tools only')
+          return this.#sendInteractions(histories, { ...options, builtinTools: [] })
+        }
         const fallbackEnabled = options.interactionsFallback ?? this.options.interactionsFallback ?? true
         if (!fallbackEnabled || !isInteractionCompatibilityError(error)) throw error
         await this.#clearInteractionState(String(options.conversationId || 'global'))
@@ -328,7 +345,16 @@ export class GeminiClient extends AbstractClient {
     }
     // 旧协议产生的轮次不会进入 Google 服务端会话；切回 Interactions 时必须全量重建。
     await this.#clearInteractionState(String(options.conversationId || 'global'))
-    return this.#sendGenerateContent(histories, options)
+    try {
+      return await this.#sendGenerateContent(histories, effectiveOptions)
+    } catch (error) {
+      if (requestedBuiltinTools.length > 0 && isGeminiBuiltinToolPermissionError(error)) {
+        this.#builtinToolsDisabled = true
+        this.logger?.('[Gemini] API key has builtin tools disabled; retrying with local function tools only')
+        return this.#sendGenerateContent(histories, { ...options, builtinTools: [] })
+      }
+      throw error
+    }
   }
 
   async #sendInteractions (histories, options = {}) {

@@ -59,6 +59,12 @@ function retryDelayMs (error, fallbackMs) {
   return match ? Math.max(1000, Math.min(600000, Number(match[1]) * 1000)) : fallbackMs
 }
 
+function isBuiltinToolPermissionError (error) {
+  return /(?:builtin|built-in) tools|内置工具|permission_denied/i.test(
+    `${String(error?.message || '')} ${JSON.stringify(error?.error || '')}`
+  )
+}
+
 function getClient (entry, baseUrl) {
   const cacheKey = fingerprint(`${baseUrl || ''}\0${entry.apiKey}`)
   let client = clients.get(cacheKey)
@@ -142,6 +148,10 @@ export async function withGeminiKeyPool (options, operation, { logger, purpose =
         projectCooldowns.set(projectKey, until)
         log(`[GeminiKeyPool] ${purpose}: project=${entry.projectId} hit 429, switching key`)
       } else if ([401, 403].includes(status)) {
+        // 403 from the local AI Studio gateway can mean the API key is valid
+        // but its built-in-tool permission is off. Do not cool the key down:
+        // the caller can retry the same request with local function tools only.
+        if (status === 403 && isBuiltinToolPermissionError(error)) throw error
         keyCooldowns.set(keyId, Date.now() + Math.max(cooldownMs, 300000))
         log(`[GeminiKeyPool] ${purpose}: key=${entry.id} authentication failed (${status}), switching key`)
       } else if ([500, 502, 503, 504].includes(status)) {
